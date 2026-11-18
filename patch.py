@@ -11,6 +11,7 @@ s = s.replace('</activity>', filt + '</activity>', 1)
 if 'launchMode' not in s:
     s = s.replace('<activity', '<activity android:launchMode="singleTask"', 1)
 s = re.sub(r'android:icon="[^"]+"', 'android:icon="@drawable/bouga_icon"', s, count=1)
+s = re.sub(r'android:roundIcon="[^"]+"', 'android:roundIcon="@drawable/bouga_icon"', s, count=1)
 if 'android:icon=' not in s:
     s = s.replace('<application', '<application android:icon="@drawable/bouga_icon"', 1)
 open(manifest, 'w', encoding='utf-8').write(s)
