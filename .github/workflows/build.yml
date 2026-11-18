@@ -1,4 +1,4 @@
-name: Build APK
+name: Build BOUGA APK
 on:
   workflow_dispatch:
   push:
@@ -19,5 +19,5 @@ jobs:
       - run: cd android && chmod +x gradlew && ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: hafeza-links-apk
+          name: bouga-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
