@@ -2,7 +2,7 @@ name: Build BOUGA APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, feature/bouga-branding]
 jobs:
   build:
     runs-on: ubuntu-latest
