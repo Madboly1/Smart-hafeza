@@ -1,11 +1,35 @@
-<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="512dp" android:height="512dp" android:viewportWidth="512" android:viewportHeight="512">
-<path android:fillColor="#07313A" android:pathData="M0,0h512v512h-512z"/>
-<path android:fillColor="#154b50" android:pathData="M256,66a190,190 0,1 0,0 380a190,190 0,1 0,0 -380"/>
-<path android:fillColor="#6b371c" android:pathData="M92,418L388,94Q400,81 414,93L426,104Q438,115 426,128L129,450Q116,464 103,451L93,441Q81,430 92,418Z"/>
-<path android:fillColor="#b66a32" android:pathData="M106,420L390,108L406,122L122,438Z"/>
-<path android:fillColor="#d99a4c" android:pathData="M188,229Q155,182 184,151Q212,121 253,153Q269,93 316,105Q361,117 346,175Q408,185 403,231Q399,266 365,283Q392,313 372,355Q350,402 296,415Q236,430 191,393Q148,357 167,313Q128,282 148,245Q161,221 188,229Z"/>
-<path android:fillColor="#ffe2a1" android:pathData="M190,230Q232,251 258,284Q282,250 319,226Q311,265 275,294Q317,306 346,337Q295,330 257,308Q230,341 192,348Q215,316 237,294Q198,276 190,230Z"/>
-<path android:fillColor="#f7c878" android:pathData="M226,203Q255,168 283,177Q311,186 315,216Q295,245 266,253Q232,242 226,203Z"/>
-<path android:fillColor="#9e592d" android:pathData="M243,210Q267,190 289,201Q309,212 300,232Q276,256 249,241Q232,230 243,210Z"/>
-<path android:fillColor="#f7b83f" android:pathData="M322,286Q354,269 380,290Q397,305 388,330Q361,312 322,318Z"/>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="512dp"
+    android:height="512dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <!-- Deep teal rounded background, matching the in-app SVG mark -->
+    <path android:fillColor="#07313A"
+        android:pathData="M112,0h288a112,112 0,0 1,112 112v288a112,112 0,0 1,-112 112h-288a112,112 0,0 1,-112 -112v-288a112,112 0,0 1,112 -112z" />
+    <path android:fillColor="#1A9A9B" android:fillAlpha="0.12"
+        android:pathData="M256,55a190,190 0,1 0,0 380a190,190 0,1 0,0 -380" />
+
+    <!-- Wooden carrying stick -->
+    <path android:fillColor="#4B2414" android:strokeColor="#E4A05A" android:strokeWidth="7"
+        android:pathData="M92,418L388,94Q400,81 414,93L426,104Q438,115 426,128L129,450Q116,464 103,451L93,441Q81,430 92,418Z" />
+    <path android:fillColor="#B66A32"
+        android:pathData="M106,420L390,108L406,122L122,438Z" />
+    <path android:fillColor="#F3B878" android:fillAlpha="0.35"
+        android:pathData="M135,407L390,129" />
+
+    <!-- Fabric bundle silhouette -->
+    <path android:fillColor="#D99A4C" android:strokeColor="#FFDEA0" android:strokeWidth="8"
+        android:pathData="M188,229Q155,182 184,151Q212,121 253,153Q269,93 316,105Q361,117 346,175Q408,185 403,231Q399,266 365,283Q392,313 372,355Q350,402 296,415Q236,430 191,393Q148,357 167,313Q128,282 148,245Q161,221 188,229Z" />
+    <path android:fillColor="#B87337" android:fillAlpha="0.9"
+        android:pathData="M190,230Q232,251 258,284Q282,250 319,226Q311,265 275,294Q317,306 346,337Q295,330 257,308Q230,341 192,348Q215,316 237,294Q198,276 190,230Z" />
+
+    <!-- Folded cloth knot -->
+    <path android:fillColor="#F7C878" android:strokeColor="#FFE4AC" android:strokeWidth="7"
+        android:pathData="M226,203Q255,168 283,177Q311,186 315,216Q295,245 266,253Q232,242 226,203Z" />
+    <path android:fillColor="#9E592D"
+        android:pathData="M243,210Q267,190 289,201Q309,212 300,232Q276,256 249,241Q232,230 243,210Z" />
+
+    <!-- Small golden fabric fold on the right -->
+    <path android:fillColor="#F7B83F" android:strokeColor="#FFDF8D" android:strokeWidth="6"
+        android:pathData="M322,286Q354,269 380,290Q397,305 388,330Q361,312 322,318Z" />
 </vector>
