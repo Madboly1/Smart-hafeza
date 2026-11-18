@@ -17,7 +17,7 @@ open(manifest, 'w', encoding='utf-8').write(s)
 
 # Copy the branded icon into Android resources.
 os.makedirs('android/app/src/main/res/drawable', exist_ok=True)
-shutil.copyfile('resources/bouga-icon.png', 'android/app/src/main/res/drawable/bouga_icon.png')
+shutil.copyfile('resources/bouga_icon.xml', 'android/app/src/main/res/drawable/bouga_icon.xml')
 
 # Keep the existing share-intent integration intact.
 d = 'android/app/src/main/java/com/hafeza/links'
