@@ -66,9 +66,9 @@ text = manifest.read_text(encoding="utf-8")
 text = re.sub(r'android:icon="[^"]+"', 'android:icon="@mipmap/bouga_launcher"', text, count=1)
 text = re.sub(r'android:roundIcon="[^"]+"', 'android:roundIcon="@mipmap/bouga_launcher_round"', text, count=1)
 if "android:icon=" not in text:
-    text = text.replace("<application", '<application android:icon="@mipmap/ic_launcher"', 1)
+    text = text.replace("<application", '<application android:icon="@mipmap/bouga_launcher"', 1)
 if "android:roundIcon=" not in text:
-    text = text.replace('android:icon="@mipmap/ic_launcher"', 'android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round"', 1)
+    text = text.replace('android:icon="@mipmap/ic_launcher"', 'android:icon="@mipmap/bouga_launcher" android:roundIcon="@mipmap/bouga_launcher_round"', 1)
 if 'android:name="android.intent.action.SEND"' not in text:
     filt = '<intent-filter><action android:name="android.intent.action.SEND"/><category android:name="android.intent.category.DEFAULT"/><data android:mimeType="text/plain"/></intent-filter>'
     text = text.replace("</activity>", filt + "</activity>", 1)
