@@ -1,90 +1,70 @@
-import os
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
-
 import cairosvg
 
 ROOT = Path(".")
 SVG_PATH = ROOT / "www/assets/bouga-icon.svg"
 RES = ROOT / "android/app/src/main/res"
-
-# Generate legacy launcher PNGs directly from the approved brand SVG.
 svg_bytes = SVG_PATH.read_bytes()
-densities = {
-    "mdpi": 48,
-    "hdpi": 72,
-    "xhdpi": 96,
-    "xxhdpi": 144,
-    "xxxhdpi": 192,
-}
-for density, size in densities.items():
-    out = RES / f"mipmap-{density}" / "ic_launcher.png"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    cairosvg.svg2png(bytestring=svg_bytes, write_to=str(out), output_width=size, output_height=size)
-    (out.parent / "ic_launcher_round.png").write_bytes(out.read_bytes())
 
-# Build a transparent adaptive foreground from the same SVG artwork.
-# The 0.84 scale keeps the complete illustration inside Android's safe zone.
-tree = ET.parse(SVG_PATH)
-source_root = tree.getroot()
-ns = "{http://www.w3.org/2000/svg}"
-foreground = ET.Element(ns + "svg", {
-    "xmlns": "http://www.w3.org/2000/svg",
-    "viewBox": "0 0 512 512"
-})
-defs = source_root.find(ns + "defs")
+# Legacy launchers: rasterize the COMPLETE approved SVG, including its
+# gradient background, circular detail, stick, bundle, folds and knot.
+for density, size in {"mdpi":48, "hdpi":72, "xhdpi":96, "xxhdpi":144, "xxxhdpi":192}.items():
+    folder = RES / f"mipmap-{density}"
+    folder.mkdir(parents=True, exist_ok=True)
+    png = cairosvg.svg2png(bytestring=svg_bytes, output_width=size, output_height=size)
+    (folder / "ic_launcher.png").write_bytes(png)
+    (folder / "ic_launcher_round.png").write_bytes(png)
+
+# Adaptive foreground: retain EVERY original SVG element. Scale the complete
+# artwork uniformly into Android's central safe area; do not crop/extract paths.
+source = ET.fromstring(svg_bytes)
+tag = "{http://www.w3.org/2000/svg}"
+foreground = ET.Element(tag + "svg", {"xmlns":"http://www.w3.org/2000/svg", "viewBox":"0 0 512 512"})
+defs = source.find(tag + "defs")
 if defs is not None:
-    foreground.append(defs)
-group = ET.SubElement(foreground, ns + "g", {"transform": "translate(41 41) scale(0.84)"})
-for element in list(source_root):
-    if element.tag == ns + "path":
-        group.append(element)
-foreground_svg = ET.tostring(foreground, encoding="utf-8", xml_declaration=True)
-adaptive_dir = RES / "mipmap-xxxhdpi"
-adaptive_dir.mkdir(parents=True, exist_ok=True)
-cairosvg.svg2png(bytestring=foreground_svg, write_to=str(adaptive_dir / "ic_launcher_foreground.png"),
-                 output_width=432, output_height=432)
+    foreground.append(ET.fromstring(ET.tostring(defs)))
+group = ET.SubElement(foreground, tag + "g", {"transform":"translate(85.333 85.333) scale(0.666667)"})
+for child in list(source):
+    if child.tag != tag + "defs":
+        group.append(ET.fromstring(ET.tostring(child)))
+foreground_png = cairosvg.svg2png(bytestring=ET.tostring(foreground, encoding="utf-8"), output_width=432, output_height=432)
+fg_dir = RES / "mipmap-xxxhdpi"
+fg_dir.mkdir(parents=True, exist_ok=True)
+(fg_dir / "ic_launcher_foreground.png").write_bytes(foreground_png)
 
-# Adaptive icon layers (Android 8.0+).
-anydpi = RES / "mipmap-anydpi-v26"
-anydpi.mkdir(parents=True, exist_ok=True)
-adaptive_xml = """<?xml version="1.0" encoding="utf-8"?>
+adaptive_dir = RES / "mipmap-anydpi-v26"
+adaptive_dir.mkdir(parents=True, exist_ok=True)
+adaptive = """<?xml version="1.0" encoding="utf-8"?>
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/bouga_icon_background" />
-    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+    <background android:drawable="@color/bouga_icon_background"/>
+    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
 </adaptive-icon>
 """
-(anydpi / "ic_launcher.xml").write_text(adaptive_xml, encoding="utf-8")
-(anydpi / "ic_launcher_round.xml").write_text(adaptive_xml, encoding="utf-8")
-
-colors = RES / "values"
-colors.mkdir(parents=True, exist_ok=True)
-(colors / "bouga_icon_colors.xml").write_text("""<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <color name="bouga_icon_background">#07313A</color>
-</resources>
+(adaptive_dir / "ic_launcher.xml").write_text(adaptive, encoding="utf-8")
+(adaptive_dir / "ic_launcher_round.xml").write_text(adaptive, encoding="utf-8")
+values = RES / "values"
+values.mkdir(parents=True, exist_ok=True)
+(values / "bouga_icon_colors.xml").write_text("""<?xml version="1.0" encoding="utf-8"?>
+<resources><color name="bouga_icon_background">#061c28</color></resources>
 """, encoding="utf-8")
 
-# Point the actual Android application at the generated mipmap launcher icons.
 manifest = ROOT / "android/app/src/main/AndroidManifest.xml"
-s = manifest.read_text(encoding="utf-8")
-s = re.sub(r'android:icon="[^"]+"', 'android:icon="@mipmap/ic_launcher"', s, count=1)
-s = re.sub(r'android:roundIcon="[^"]+"', 'android:roundIcon="@mipmap/ic_launcher_round"', s, count=1)
-if 'android:icon=' not in s:
-    s = s.replace("<application", '<application android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round"', 1)
-if 'android:roundIcon=' not in s:
-    s = s.replace('android:icon="@mipmap/ic_launcher"', 'android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round"', 1)
-
-# Preserve the existing Android share-intent behavior without duplicating its filter.
-if 'android:name="android.intent.action.SEND"' not in s:
+text = manifest.read_text(encoding="utf-8")
+text = re.sub(r'android:icon="[^"]+"', 'android:icon="@mipmap/ic_launcher"', text, count=1)
+text = re.sub(r'android:roundIcon="[^"]+"', 'android:roundIcon="@mipmap/ic_launcher_round"', text, count=1)
+if "android:icon=" not in text:
+    text = text.replace("<application", '<application android:icon="@mipmap/ic_launcher"', 1)
+if "android:roundIcon=" not in text:
+    text = text.replace('android:icon="@mipmap/ic_launcher"', 'android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round"', 1)
+if 'android:name="android.intent.action.SEND"' not in text:
     filt = '<intent-filter><action android:name="android.intent.action.SEND"/><category android:name="android.intent.category.DEFAULT"/><data android:mimeType="text/plain"/></intent-filter>'
-    s = s.replace("</activity>", filt + "</activity>", 1)
-if "android:launchMode=" not in s:
-    s = s.replace("<activity", '<activity android:launchMode="singleTask"', 1)
-manifest.write_text(s, encoding="utf-8")
+    text = text.replace("</activity>", filt + "</activity>", 1)
+if "android:launchMode=" not in text:
+    text = text.replace("<activity", '<activity android:launchMode="singleTask"', 1)
+manifest.write_text(text, encoding="utf-8")
 
-# Keep the existing share-intent bridge intact.
 java_dir = ROOT / "android/app/src/main/java/com/hafeza/links"
 java_dir.mkdir(parents=True, exist_ok=True)
 (java_dir / "MainActivity.java").write_text('''package com.hafeza.links;
