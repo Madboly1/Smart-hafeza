@@ -57,6 +57,31 @@ class _HomePageState extends State<HomePage> {
       if (picked == null || picked.files.isEmpty) return;
       final bytes = picked.files.single.bytes;
       if (bytes == null) throw const FormatException('تعذر قراءة ملف النسخة الاحتياطية.');
+
+      if (!mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('استيراد نسخة بُؤجة'),
+          content: const Text(
+            'هنضيف الروابط والتصنيفات الموجودة في الملف إلى مكتبتك الحالية. '
+            'الاستيراد بيحافظ على بياناتك الموجودة ومش بيمسح أي روابط. '
+            'لو فيه رابط بنفس المعرّف، بيانات النسخة هتحدّثه.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('استيراد ودمج'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+
       final report = await _db!.importLegacyJson(utf8.decode(bytes));
       await _refresh();
       if (!mounted) return;
