@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../../../core/theme/bouga_tokens.dart';
 import '../../legacy_import/data/bouga_database.dart';
@@ -40,6 +43,34 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() { _db?.close(); super.dispose(); }
+
+  Future<void> _importBackup() async {
+    try {
+      final picked = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        withData: true,
+      );
+      if (picked == null || picked.files.isEmpty) return;
+      final bytes = picked.files.single.bytes;
+      if (bytes == null) throw const FormatException('تعذر قراءة ملف النسخة الاحتياطية.');
+      final report = await _db!.importLegacyJson(utf8.decode(bytes));
+      await _refresh();
+      if (!mounted) return;
+      final message = report.skippedAsDuplicate
+          ? 'النسخة دي مستوردة بالفعل، مفيش حاجة اتكررت.'
+          : 'تم استيراد ${report.linkCount} رابط و${report.categoryCount} تصنيف بنجاح.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    } on FormatException catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('ملف النسخة الاحتياطية غير صالح: ${error.message}')),
+      );
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر استيراد النسخة الاحتياطية: $error')),
+      );
+    }
+  }
 
   Future<void> _add() async {
     final url = TextEditingController();
@@ -101,7 +132,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) => Directionality(
     textDirection: TextDirection.rtl,
     child: Scaffold(
-      appBar: AppBar(title: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      appBar: AppBar(actions: [IconButton(tooltip: 'استيراد نسخة احتياطية', onPressed: _loading ? null : _importBackup, icon: const Icon(Icons.backup_outlined))], title: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('BOUGA', style: TextStyle(letterSpacing: 2, fontWeight: FontWeight.w800)),
         Text('كل اللي يهمك.. في بُؤجة واحدة.', style: TextStyle(fontSize: 11, color: BougaColors.muted)),
       ])),
