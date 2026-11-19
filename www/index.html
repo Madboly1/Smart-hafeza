@@ -24,7 +24,7 @@ button,input,select,textarea{font:inherit}button{cursor:pointer;color:inherit}.a
 </style></head>
 <body>
 <main class="app">
-<header class="top"><div class="brand"><img src="assets/bouga-icon.svg" alt=""><div><b>BOUGA</b><small>ذاكرتك الرقمية في مكان واحد</small></div></div><div class="avatar" aria-label="بؤجتك">✦</div></header>
+<header class="top"><div class="brand"><img src="assets/bouga-icon.svg" alt=""><div><b>BOUGA</b><small>ذاكرتك الرقمية في مكان واحد</small></div></div><button class="avatar" aria-label="تصدير بيانات بؤجتك" title="تصدير نسخة من بياناتك" onclick="exportLegacyData()">⇩</button></header>
 <section class="welcome"><div class="eyebrow">مساحتك الخاصة للمحتوى</div><h1>خلي المهم دايمًا<br>في متناول إيدك.</h1><p>اجمع، رتّب، وارجع لكل حاجة وقت ما تحتاجها.</p></section>
 <div class="search"><span>⌕</span><input id="q" placeholder="دوّر في بُؤجتك..." oninput="draw()"><span style="font-size:15px">⌘</span></div>
 <section class="stats"><div class="stat"><strong id="totalCount">0</strong><span>كل المحفوظات</span></div><div class="stat"><strong id="doneCount">0</strong><span>تمت مشاهدتها</span></div><div class="stat"><strong id="catCount">0</strong><span>مجموعاتك</span></div></section>
@@ -76,5 +76,30 @@ function removeLink(id){if(!confirm('متأكد إنك عايز تمسح الع�
 function openIn(id){const l=D.links.find(x=>String(x.id)===String(id));if(!l)return;P.Browser?P.Browser.open({url:l.url}):window.open(l.url,'_blank')}
 async function incoming(){try{const r=await P.SendIntent.checkSendIntentReceived(),t=(r&&((r.url||'')+' '+(r.title||'')))||'',m=t.match(/https?:\/\/\S+/);if(m)openAdd(m[0])}catch(e){}}
 $('list').addEventListener('click',e=>{const card=e.target.closest('[data-link-id]');if(card)show(card.dataset.linkId)});
+// Export contract for the future Flutter migration bridge. Never clears or rewrites localStorage.
+window.BougaLegacyExport = {
+  getJson() {
+    const raw = localStorage.getItem('hl');
+    if (raw === null) throw new Error('لا توجد بيانات محفوظة في مساحة التخزين القديمة.');
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.links) || !Array.isArray(parsed.cats)) {
+      throw new Error('صيغة بيانات بُؤجة القديمة غير سليمة.');
+    }
+    return JSON.stringify({schemaVersion:1,source:'bouga-capacitor-hl',exportedAt:new Date().toISOString(),data:parsed},null,2);
+  }
+};
+function exportLegacyData() {
+  try {
+    const payload = window.BougaLegacyExport.getJson();
+    const blob = new Blob([payload], {type:'application/json;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'bouga-backup-'+new Date().toISOString().slice(0,10)+'.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    alert('جهزنا نسخة من بياناتك. احتفظ بالملف في مكان آمن ❤️');
+  } catch (error) { alert(error.message || 'تعذر تصدير البيانات.'); }
+}
 window.addEventListener('sendIntentReceived',incoming);incoming();draw();
 </script></body></html>
