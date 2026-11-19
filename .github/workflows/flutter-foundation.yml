@@ -45,7 +45,7 @@ jobs:
           fi
       - run: flutter pub get
       - run: dart format lib test
-      - run: flutter analyze --no-fatal-infos
+      - run: flutter analyze
       - run: flutter test
       - name: Build Android debug APK
         run: flutter build apk --debug
