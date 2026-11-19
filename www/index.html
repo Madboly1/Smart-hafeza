@@ -20,7 +20,18 @@ input,select,textarea{width:100%;padding:10px;border-radius:10px;border:1px soli
 <button class="btn" onclick="save()">حفظ</button><button class="btn g" onclick="closeAll()">إلغاء</button></div>
 <div class="sheet" id="det"></div>
 <script>
-const $=id=>document.getElementById(id),P=window.Capacitor&&Capacitor.Plugins||{};
+const $=id=>document.getElementById(id),P=(window.Capacitor&&window.Capacitor.Plugins)||{};
+let D;
+try {
+ const saved=JSON.parse(localStorage.getItem('hl')||'{"links":[],"cats":["مونتاج","رياضة","أخرى"]}');
+ D={links:Array.isArray(saved.links)?saved.links:[],cats:Array.isArray(saved.cats)?saved.cats:["مونتاج","رياضة","أخرى"]};
+} catch(e) {
+ console.error('BOUGA storage error',e);
+ D={links:[],cats:["مونتاج","رياضة","أخرى"]};
+}
+D.cats=[...new Set(D.cats.filter(x=>typeof x==="string"&&x.trim()).concat(["أخرى"]))];
+D.links=D.links.filter(x=>x&&typeof x==="object"&&x.url).map((l,i)=>({...l,id:String(l.id||Date.now()+i),url:String(l.url),title:String(l.title||""),img:String(l.img||""),c:String(l.c||"أخرى"),p:Math.max(0,Math.min(100,Number(l.p)||0)),note:String(l.note||""),seen:Number(l.seen)||Date.now()}));
+let cur='الكل',last='أخرى';
 let D=JSON.parse(localStorage.getItem('hl')||'{"links":[],"cats":["مونتاج","رياضة","أخرى"]}'),cur='الكل',last='أخرى';
 const st=()=>localStorage.setItem('hl',JSON.stringify(D)),esc=s=>String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const yt=u=>(u.match(/(?:youtu\.be\/|v=|shorts\/|embed\/)([\w-]{11})/)||[])[1];
@@ -61,5 +72,10 @@ function upd(id,k,v){D.links.find(x=>x.id==id)[k]=v;st()}
 function setP(id,v){upd(id,'p',v);$('pv').textContent=v;document.querySelector('#det input[type=range]').value=v}
 function openIn(id){const l=D.links.find(x=>x.id==id);P.Browser?P.Browser.open({url:l.url}):window.open(l.url)}
 async function incoming(){try{const r=await P.SendIntent.checkSendIntentReceived();const t=(r&&((r.url||'')+' '+(r.title||'')))||'';const m=t.match(/https?:\/\/\S+/);if(m)openAdd(m[0])}catch(e){}}
-window.addEventListener('sendIntentReceived',incoming);incoming();draw();
+window.addEventListener('sendIntentReceived',incoming);
+window.draw=draw;window.openAdd=openAdd;window.closeAll=closeAll;window.newCat=newCat;window.save=save;window.show=show;window.openIn=openIn;window.incoming=incoming;
+window.addEventListener('error',e=>{console.error('BOUGA runtime:',e.message);});
+window.addEventListener('unhandledrejection',e=>console.error('BOUGA async:',e.reason));
+try{draw();}catch(e){console.error('BOUGA render failed',e);$('list').innerHTML='<p class="warn">حصل خطأ في تحميل البيانات. أعد فتح التطبيق.</p>';}
+incoming();
 </script></body></html>
