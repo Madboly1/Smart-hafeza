@@ -48,6 +48,45 @@ void main() {
         {'newLegacyFlag': {'kept': true}});
   });
 
+  test('maps the complete real Capacitor hl link shape into database columns', () async {
+    await database.importLegacyJson(jsonEncode({
+      'schemaVersion': 1,
+      'source': 'bouga-capacitor-hl',
+      'data': {
+        'cats': ['مونتاج'],
+        'links': [
+          {
+            'id': 'legacy-real-1',
+            'url': 'https://example.com/watch',
+            'title': 'درس مونتاج',
+            'note': 'وقفت عند الدقيقة 12',
+            'p': '65',
+            'seen': 1700000000123,
+            'c': 'مونتاج',
+            'k': 'فيديو',
+            'img': 'https://example.com/thumb.jpg',
+            'futureField': 'preserve-me',
+          }
+        ],
+      },
+    }));
+
+    final rows = await database.getLinks();
+    expect(rows, hasLength(1));
+    final row = rows.single;
+    expect(row['id'], 'legacy-real-1');
+    expect(row['url'], 'https://example.com/watch');
+    expect(row['title'], 'درس مونتاج');
+    expect(row['note'], 'وقفت عند الدقيقة 12');
+    expect(row['progress'], 65);
+    expect(row['last_seen'], 1700000000123);
+    expect(row['category'], 'مونتاج');
+    expect(row['kind'], 'فيديو');
+    expect(row['image_url'], 'https://example.com/thumb.jpg');
+    expect(jsonDecode(row['extra_json']! as String), {'futureField': 'preserve-me'});
+    expect(await database.getCategories(), contains('مونتاج'));
+  });
+
   test('same payload is idempotent and does not duplicate rows', () async {
     const payload = '{"cats":["أخرى"],"links":[{"id":"a","url":"https://a.test"}]}';
     final first = await database.importLegacyJson(payload);
