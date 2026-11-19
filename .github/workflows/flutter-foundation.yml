@@ -1,0 +1,41 @@
+name: BOUGA Flutter foundation
+on:
+  push:
+    branches: [migration/flutter-foundation]
+    paths:
+      - "flutter/**"
+      - ".github/workflows/flutter-foundation.yml"
+  pull_request:
+    branches: [migration/flutter-foundation]
+    paths:
+      - "flutter/**"
+      - ".github/workflows/flutter-foundation.yml"
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flutter
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generate platform runners
+        run: flutter create --platforms=android,windows,web --org com.hafeza --project-name bouga .
+      - name: Preserve existing Android application ID
+        run: |
+          if [ -f android/app/build.gradle.kts ]; then
+            sed -i 's/applicationId = "com.hafeza.bouga"/applicationId = "com.hafeza.links"/' android/app/build.gradle.kts
+          elif [ -f android/app/build.gradle ]; then
+            sed -i "s/applicationId 'com.hafeza.bouga'/applicationId 'com.hafeza.links'/" android/app/build.gradle
+          fi
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed lib test
+      - run: flutter analyze
+      - run: flutter test
+      - name: Build Android debug APK
+        run: flutter build apk --debug

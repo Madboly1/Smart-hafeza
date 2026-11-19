@@ -55,7 +55,7 @@ class LegacySnapshot {
 
   static int _progress(dynamic value) {
     final parsed = value is num ? value.toInt() : int.tryParse('$value') ?? 0;
-    return parsed.clamp(0, 100);
+    return parsed.clamp(0, 100).toInt();
   }
 
   static int _timestamp(dynamic value) {
