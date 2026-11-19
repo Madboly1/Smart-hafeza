@@ -26,12 +26,22 @@ jobs:
           cache: true
       - name: Generate platform runners
         run: flutter create --platforms=android,windows,web --org com.hafeza --project-name bouga .
-      - name: Preserve existing Android application ID
+      - name: Preserve Android identity and configure compile SDK
+        shell: bash
         run: |
           if [ -f android/app/build.gradle.kts ]; then
             sed -i 's/applicationId = "com.hafeza.bouga"/applicationId = "com.hafeza.links"/' android/app/build.gradle.kts
+            sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/' android/app/build.gradle.kts
+            grep -q 'compileSdk = 36' android/app/build.gradle.kts
+            grep -q 'applicationId = "com.hafeza.links"' android/app/build.gradle.kts
           elif [ -f android/app/build.gradle ]; then
             sed -i "s/applicationId 'com.hafeza.bouga'/applicationId 'com.hafeza.links'/" android/app/build.gradle
+            sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 36/' android/app/build.gradle
+            grep -q 'compileSdkVersion 36' android/app/build.gradle
+            grep -q "applicationId 'com.hafeza.links'" android/app/build.gradle
+          else
+            echo "Generated Android app Gradle file not found" >&2
+            exit 1
           fi
       - run: flutter pub get
       - run: dart format lib test
