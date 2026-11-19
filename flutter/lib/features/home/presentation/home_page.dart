@@ -20,6 +20,7 @@ class _HomePageState extends State<HomePage> {
   String _query = '';
   String _category = 'الكل';
   bool _loading = true;
+  String? _startupError;
 
   @override
   void initState() { super.initState(); _init(); }
@@ -29,6 +30,8 @@ class _HomePageState extends State<HomePage> {
       _db = await BougaDatabase.open();
       _repo = BougaLinksRepository(_db!);
       await _refresh();
+    } catch (error) {
+      if (mounted) setState(() => _startupError = error.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -137,7 +140,7 @@ class _HomePageState extends State<HomePage> {
         Text('كل اللي يهمك.. في بُؤجة واحدة.', style: TextStyle(fontSize: 11, color: BougaColors.muted)),
       ])),
       floatingActionButton: FloatingActionButton.extended(onPressed: _loading ? null : _add, icon: const Icon(Icons.add_link), label: const Text('إضافة رابط')),
-      body: _loading ? const Center(child: CircularProgressIndicator()) : RefreshIndicator(onRefresh: _refresh, child: ListView(padding: const EdgeInsets.all(16), children: [
+      body: _loading ? const Center(child: CircularProgressIndicator()) : _startupError != null ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text('حصلت مشكلة في فتح بُؤجة:\n$_startupError', textAlign: TextAlign.center))) : RefreshIndicator(onRefresh: _refresh, child: ListView(padding: const EdgeInsets.all(16), children: [
         const Text('مساحتك الخاصة للمحتوى', style: TextStyle(color: BougaColors.mint)),
         const SizedBox(height: 8),
         const Text('خلي المهم دايمًا في متناول إيدك.', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
