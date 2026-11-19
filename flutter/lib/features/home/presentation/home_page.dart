@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/bouga_tokens.dart';
 import '../../legacy_import/data/bouga_database.dart';
 import '../../links/data/bouga_links_repository.dart';
+import '../../settings/presentation/settings_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -160,7 +161,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) => Directionality(
     textDirection: TextDirection.rtl,
     child: Scaffold(
-      appBar: AppBar(actions: [IconButton(tooltip: 'استيراد نسخة احتياطية', onPressed: _loading ? null : _importBackup, icon: const Icon(Icons.backup_outlined))], title: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      appBar: AppBar(actions: [IconButton(tooltip: 'الإعدادات', onPressed: _loading ? null : () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => SettingsPage(onImportBackup: _importBackup))), icon: const Icon(Icons.settings_outlined))], title: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('BOUGA', style: TextStyle(letterSpacing: 2, fontWeight: FontWeight.w800)),
         Text('كل اللي يهمك.. في بُؤجة واحدة.', style: TextStyle(fontSize: 11, color: BougaColors.muted)),
       ])),
