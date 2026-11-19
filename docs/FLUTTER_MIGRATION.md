@@ -62,7 +62,24 @@ BOUGA must ship with a real update mechanism, modeled on the user's WAQT update 
 - Manual update check works from Settings.
 
 ## Current status
-- Planning branch created from `feature/bouga-branding`.
-- Legacy application and data-contract audit completed in `docs/LEGACY_APP_AUDIT.md`.
-- No existing application code or user data format has been changed by this plan.
-- Next action: define the Flutter foundation and data migration tests from the audited legacy schema before implementing screens.
+
+### Implemented on `migration/flutter-foundation`
+- Flutter foundation, Arabic RTL home screen, Material 3 BOUGA theme, and CI workflow.
+- SQLite schema and transactional legacy JSON importer with payload digest/idempotency.
+- Legacy export contract in the existing Capacitor app. Export is read-only and does not clear or rewrite `localStorage.hl`.
+- Flutter links repository and initial Android-first CRUD UI: list, search, category filtering, add, details/edit, progress, notes, and delete.
+- JSON backup picker/import flow in Flutter.
+- Startup database errors are shown in the UI instead of leaving an endless loading state.
+- Regression tests cover CRUD, duplicate imports, changed snapshots, malformed JSON, and preservation of unknown legacy fields.
+- The importer normalizes the actual Capacitor short keys: `p` → progress, `seen` → last_seen, `c` → category, `k` → kind, and `img` → image_url. Missing/invalid progress and timestamps are normalized by `LegacySnapshot`; unknown properties remain in `extra_json`.
+- A regression test now imports a representative real `hl` export envelope and asserts every mapped field.
+
+### Still required before replacing the current app
+- Verify the Flutter CI run end-to-end (format, analyze, tests, Android debug build); a commit with no associated PR run is not evidence of success.
+- Test backup export from the installed Capacitor Android app and import into Flutter on a real device.
+- Add pre-import confirmation and a clear merge/no-delete explanation.
+- Build the Settings screen and implement the production update checker/download/verification/install flow described above.
+- Complete platform integrations, release signing, share intents, URL handling, reader/embed parity, and device testing.
+- Keep the Capacitor app and its data intact until migration and upgrade acceptance tests pass.
+
+The migration remains isolated on `migration/flutter-foundation`; do not merge into a release branch without explicit review.
