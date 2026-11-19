@@ -20,18 +20,7 @@ input,select,textarea{width:100%;padding:10px;border-radius:10px;border:1px soli
 <button class="btn" onclick="save()">حفظ</button><button class="btn g" onclick="closeAll()">إلغاء</button></div>
 <div class="sheet" id="det"></div>
 <script>
-const $=id=>document.getElementById(id),P=(window.Capacitor&&window.Capacitor.Plugins)||{};
-let D;
-try {
- const saved=JSON.parse(localStorage.getItem('hl')||'{"links":[],"cats":["مونتاج","رياضة","أخرى"]}');
- D={links:Array.isArray(saved.links)?saved.links:[],cats:Array.isArray(saved.cats)?saved.cats:["مونتاج","رياضة","أخرى"]};
-} catch(e) {
- console.error('BOUGA storage error',e);
- D={links:[],cats:["مونتاج","رياضة","أخرى"]};
-}
-D.cats=[...new Set(D.cats.filter(x=>typeof x==="string"&&x.trim()).concat(["أخرى"]))];
-D.links=D.links.filter(x=>x&&typeof x==="object"&&x.url).map((l,i)=>({...l,id:String(l.id||Date.now()+i),url:String(l.url),title:String(l.title||""),img:String(l.img||""),c:String(l.c||"أخرى"),p:Math.max(0,Math.min(100,Number(l.p)||0)),note:String(l.note||""),seen:Number(l.seen)||Date.now()}));
-let cur='الكل',last='أخرى';
+const $=id=>document.getElementById(id),P=window.Capacitor&&Capacitor.Plugins||{};
 let D=JSON.parse(localStorage.getItem('hl')||'{"links":[],"cats":["مونتاج","رياضة","أخرى"]}'),cur='الكل',last='أخرى';
 const st=()=>localStorage.setItem('hl',JSON.stringify(D)),esc=s=>String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const yt=u=>(u.match(/(?:youtu\.be\/|v=|shorts\/|embed\/)([\w-]{11})/)||[])[1];
@@ -43,39 +32,32 @@ if(/facebook\.com|fb\.watch|fb\.com/.test(u))return/\/videos?\/|\/reel|\/watch|f
 return''}
 async function reader(l){const b=$('rd');try{const h=await(await fetch(l.url)).text(),d=new DOMParser().parseFromString(h,'text/html'),r=d.querySelector('article')||d.body;
 const t=[...r.querySelectorAll('h1,h2,h3,p')].map(e=>e.textContent.trim()).filter(s=>s.length>30);
-b.innerHTML=(l.img?`<img src="${esc(l.img)}">`:'')+(t.length?t.map(s=>`<p>${esc(s)}</p>`).join(''):'مقدرتش أعرض المحتوى هنا — جرّب "افتح في المتصفح".')}catch(e){b.textContent='مقدرتش أعرض المحتوى هنا — جرّب "افتح في المتصفح".'}}
+b.innerHTML=(l.img?'<img src="'+esc(l.img)+'">':'')+(t.length?t.map(s=>'<p>'+esc(s)+'</p>').join(''):'مقدرتش أعرض المحتوى هنا — جرّب "افتح في المتصفح".')}catch(e){b.textContent='مقدرتش أعرض المحتوى هنا — جرّب "افتح في المتصفح".'}}
 async function meta(u){try{if(yt(u)){const j=await(await fetch('https://www.youtube.com/oembed?format=json&url='+encodeURIComponent(u))).json();return{title:j.title,img:j.thumbnail_url}}
-const h=await(await fetch(u)).text(),g=p=>{const m=h.match(new RegExp('<meta[^>]+(?:property|name)=["\']'+p+'["\'][^>]*content=["\']([^"\']*)','i'));return m&&m[1]};
+const h=await(await fetch(u)).text(),g=p=>{const m=h.match(new RegExp('<meta[^>]+(?:property|name)=["\\']'+p+'["\\'][^>]*content=["\\']([^"\\']*)','i'));return m&&m[1]};
 return{title:g('og:title')||(h.match(/<title>([^<]*)/i)||[])[1],img:g('og:image')}}catch(e){return{}}}
 function draw(){const q=$('q').value.toLowerCase();
-$('chips').innerHTML=['الكل',...D.cats].map(c=>`<span class="chip ${c==cur?'on':''}" onclick="cur='${c}';draw()">${c}</span>`).join('');
+$('chips').innerHTML=['الكل',...D.cats].map(c=>'<span class="chip '+(c==cur?'on':'')+'" onclick="cur='+JSON.stringify(c)+';draw()">'+esc(c)+'</span>').join('');
 const old=D.links.filter(l=>l.p<100&&Date.now()-l.seen>7*864e5);
-$('warn').innerHTML=old.length?`<div class="warn" onclick="show('${old[0].id}')">⏰ عندك ${old.length} لينك مشفتهوش من أكتر من أسبوع — دوس لتفتح أولهم</div>`:'';
-$('list').innerHTML=D.links.filter(l=>(cur=='الكل'||l.c==cur)&&(l.title+l.url+l.c).toLowerCase().includes(q)).map(l=>`<div class="card" onclick="show('${l.id}')"><img src="${esc(l.img)}" onerror="this.style.visibility='hidden'"><div style="flex:1"><h4>${esc(l.title||l.url)}</h4><div class="meta">${l.k} • ${esc(l.c)} • ${l.p==100?'✅ خلصت':l.p>0?l.p+'% — '+esc(l.note||''):'لسه'}</div><div class="bar"><i style="width:${l.p}%"></i></div></div></div>`).join('')||'<p style="text-align:center;color:#789">بُؤجة لسه فاضية — دوس + أو شارك لينك من أي تطبيق</p>'}
-function fillCats(){$('c').innerHTML=D.cats.map(c=>`<option ${c==last?'selected':''}>${c}</option>`).join('')}
+$('warn').innerHTML=old.length?'<div class="warn" onclick="show(\''+old[0].id+'\')">⏰ عندك '+old.length+' لينك مشفتهوش من أكتر من أسبوع — دوس لتفتح أولهم</div>':'';
+$('list').innerHTML=D.links.filter(l=>(cur=='الكل'||l.c==cur)&&(l.title+l.url+l.c).toLowerCase().includes(q)).map(l=>'<div class="card" onclick="show(\''+l.id+'\')"><img src="'+esc(l.img)+'" onerror="this.style.visibility=\'hidden\'"><div style="flex:1"><h4>'+esc(l.title||l.url)+'</h4><div class="meta">'+esc(l.k)+' • '+esc(l.c)+' • '+(l.p==100?'✅ خلصت':l.p>0?l.p+'% — '+esc(l.note||''):'لسه')+'</div><div class="bar"><i style="width:'+l.p+'%"></i></div></div></div>').join('')||'<p style="text-align:center;color:#789">بُؤجة لسه فاضية — دوس + أو شارك لينك من أي تطبيق</p>'}
+function fillCats(){$('c').innerHTML=D.cats.map(c=>'<option '+(c==last?'selected':'')+'>'+esc(c)+'</option>').join('')}
 function openAdd(u){fillCats();$('u').value=u||'';$('add').classList.add('on')}
 function closeAll(){$('add').classList.remove('on');$('det').classList.remove('on');$('det').innerHTML=''}
 function newCat(sel){const n=prompt('اسم التصنيف الجديد:');if(n&&!D.cats.includes(n)){D.cats.push(n);st()}if(sel=='c'){last=n||last;fillCats()}draw()}
 async function save(){const u=$('u').value.trim();if(!u)return;last=$('c').value;const m=await meta(u);
-D.links.unshift({id:''+Date.now(),url:u,k:kind(u),c:last,title:m.title||'',img:m.img||(yt(u)?`https://i.ytimg.com/vi/${yt(u)}/hqdefault.jpg`:''),p:0,note:'',seen:Date.now()});st();closeAll();draw()}
-function show(id){const l=D.links.find(x=>x.id==id);l.seen=Date.now();st();const e=embed(l.url);
-$('det').innerHTML=`<button class="btn g" onclick="closeAll();draw()">← رجوع</button><h3>${esc(l.title||l.url)}</h3>
-${e?`<iframe src="${e}" style="${yt(l.url)?'':'aspect-ratio:auto;height:70vh'}" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>`:'<div id="rd" class="rd">⏳ جاري تحميل المحتوى...</div>'}
-<button class="btn g" onclick="openIn('${l.id}')">🌐 افتح في المتصفح</button>
-<p>التقدم: <b id="pv">${l.p}</b>%</p><input type="range" min="0" max="100" step="5" value="${l.p}" oninput="$('pv').textContent=this.value;upd('${l.id}','p',+this.value)">
-<button class="btn g" onclick="setP('${l.id}',0)">لسه</button><button class="btn g" onclick="setP('${l.id}',50)">نص</button><button class="btn g" onclick="setP('${l.id}',100)">خلصت ✅</button>
-<input placeholder="وقفت عند... (مثلاً دقيقة 12)" value="${esc(l.note)}" onchange="upd('${l.id}','note',this.value)">
-<select onchange="upd('${l.id}','c',this.value)">${D.cats.map(c=>`<option ${c==l.c?'selected':''}>${c}</option>`).join('')}</select>
-<button class="btn r" onclick="if(confirm('تمسح اللينك؟')){D.links=D.links.filter(x=>x.id!='${l.id}');st();closeAll();draw()}">🗑 مسح</button>`;
+D.links.unshift({id:''+Date.now(),url:u,k:kind(u),c:last,title:m.title||'',img:m.img||(yt(u)?'https://i.ytimg.com/vi/'+yt(u)+'/hqdefault.jpg':''),p:0,note:'',seen:Date.now()});st();closeAll();draw()}
+function show(id){const l=D.links.find(x=>x.id==id);if(!l)return;l.seen=Date.now();st();const e=embed(l.url);
+$('det').innerHTML='<button class="btn g" onclick="closeAll();draw()">← رجوع</button><h3>'+esc(l.title||l.url)+'</h3>'+
+(e?'<iframe src="'+e+'" style="'+(yt(l.url)?'':'aspect-ratio:auto;height:70vh')+'" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>':'<div id="rd" class="rd">⏳ جاري تحميل المحتوى...</div>')+
+'<button class="btn g" onclick="openIn(\''+l.id+'\')">🌐 افتح في المتصفح</button><p>التقدم: <b id="pv">'+l.p+'</b>%</p><input type="range" min="0" max="100" step="5" value="'+l.p+'" oninput="$(\'pv\').textContent=this.value;upd(\''+l.id+'\',\'p\',+this.value)">'+
+'<button class="btn g" onclick="setP(\''+l.id+'\',0)">لسه</button><button class="btn g" onclick="setP(\''+l.id+'\',50)">نص</button><button class="btn g" onclick="setP(\''+l.id+'\',100)">خلصت ✅</button>'+
+'<input placeholder="وقفت عند... (مثلاً دقيقة 12)" value="'+esc(l.note)+'" onchange="upd(\''+l.id+'\',\'note\',this.value)"><select onchange="upd(\''+l.id+'\',\'c\',this.value)">'+D.cats.map(c=>'<option '+(c==l.c?'selected':'')+'>'+esc(c)+'</option>').join('')+'</select>'+
+'<button class="btn r" onclick="if(confirm(\'تمسح اللينك؟\')){D.links=D.links.filter(x=>x.id!=\''+l.id+'\');st();closeAll();draw()}">🗑 مسح</button>';
 $('det').classList.add('on');if(!e)reader(l)}
-function upd(id,k,v){D.links.find(x=>x.id==id)[k]=v;st()}
+function upd(id,k,v){const l=D.links.find(x=>x.id==id);if(l){l[k]=v;st()}}
 function setP(id,v){upd(id,'p',v);$('pv').textContent=v;document.querySelector('#det input[type=range]').value=v}
-function openIn(id){const l=D.links.find(x=>x.id==id);P.Browser?P.Browser.open({url:l.url}):window.open(l.url)}
+function openIn(id){const l=D.links.find(x=>x.id==id);if(!l)return;P.Browser?P.Browser.open({url:l.url}):window.open(l.url)}
 async function incoming(){try{const r=await P.SendIntent.checkSendIntentReceived();const t=(r&&((r.url||'')+' '+(r.title||'')))||'';const m=t.match(/https?:\/\/\S+/);if(m)openAdd(m[0])}catch(e){}}
-window.addEventListener('sendIntentReceived',incoming);
-window.draw=draw;window.openAdd=openAdd;window.closeAll=closeAll;window.newCat=newCat;window.save=save;window.show=show;window.openIn=openIn;window.incoming=incoming;
-window.addEventListener('error',e=>{console.error('BOUGA runtime:',e.message);});
-window.addEventListener('unhandledrejection',e=>console.error('BOUGA async:',e.reason));
-try{draw();}catch(e){console.error('BOUGA render failed',e);$('list').innerHTML='<p class="warn">حصل خطأ في تحميل البيانات. أعد فتح التطبيق.</p>';}
-incoming();
+window.addEventListener('sendIntentReceived',incoming);incoming();draw();
 </script></body></html>
