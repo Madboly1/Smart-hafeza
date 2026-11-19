@@ -76,8 +76,7 @@ void main() {
       '{"cats":[],"links":[{"id":"safe","url":"https://safe.test"}]}',
     );
 
-    expect(() => database.importLegacyJson('{broken json'),
-        throwsFormatException);
+    expect(database.importLegacyJson('{broken json'), throwsFormatException);
     expect(await database.countLinks(), 1);
   });
 }
