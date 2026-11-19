@@ -1,4 +1,4 @@
-import 'bouga_database.dart';
+import '../../legacy_import/data/bouga_database.dart';
 
 class BougaLinksRepository {
   BougaLinksRepository(this.database);
