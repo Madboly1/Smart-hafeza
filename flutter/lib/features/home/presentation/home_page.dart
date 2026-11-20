@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../../links/data/embedded_content.dart';
+import '../../links/presentation/saved_link_card.dart';
 import '../../links/presentation/embedded_content_page.dart';
 
 import 'package:file_picker/file_picker.dart';
@@ -30,6 +31,8 @@ class _HomePageState extends State<HomePage> {
   List<Map<String, Object?>> _links = [];
   List<String> _categories = [];
   bool _onlyUnopened = false;
+  bool _oldestFirst = false;
+  int _tab = 0;
   Map<String, int> _groupCounts = {};
   String _query = '';
   String _category = 'الكل';
@@ -68,7 +71,8 @@ class _HomePageState extends State<HomePage> {
     if (_repo == null) {
       return;
     }
-    var links = await _repo!.list(query: _query, category: _category);
+    var links = await _repo!
+        .list(query: _query, category: _category, oldestFirst: _oldestFirst);
     if (_onlyUnopened) {
       links = links.where((item) => item['open_state'] == 'unopened').toList();
     }
@@ -232,11 +236,11 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _add({String? sharedUrl}) async {
+  Future<void> _add({String? sharedUrl, String? group}) async {
     final url = TextEditingController(text: sharedUrl);
     final title = TextEditingController();
-    final category =
-        TextEditingController(text: _category == 'الكل' ? '' : _category);
+    final category = TextEditingController(
+        text: group ?? (_category == 'الكل' ? '' : _category));
     final form = GlobalKey<FormState>();
     final save = await showDialog<bool>(
         context: context,
@@ -420,219 +424,427 @@ class _HomePageState extends State<HomePage> {
     note.dispose();
   }
 
+  Future<void> _openGroup(String group) async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (context) => _GroupLinksPage(
+              group: group,
+              load: (oldestFirst) =>
+                  _repo!.list(category: group, oldestFirst: oldestFirst),
+              add: () => _add(group: group),
+              details: _details,
+              open: _openContent,
+            )));
+    await _refresh();
+  }
+
+  Widget _groups() =>
+      Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const Text('مجموعاتك',
+            style: TextStyle(fontSize: 29, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 9),
+        const Text('بتنشئها وبتسمّيها بنفسك.',
+            style: TextStyle(color: BougaColors.muted)),
+        const SizedBox(height: 20),
+        if (_categories.isEmpty)
+          const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Text('مفيش مجموعات لسه. اعمل أول مجموعة على مزاجك.',
+                  style: TextStyle(color: BougaColors.muted))),
+        ..._categories.map((c) => Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Material(
+                color: BougaColors.surface,
+                borderRadius: BorderRadius.circular(22),
+                child: InkWell(
+                    onTap: () => _openGroup(c),
+                    borderRadius: BorderRadius.circular(22),
+                    child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Row(children: [
+                          Container(
+                              padding: const EdgeInsets.all(13),
+                              decoration: BoxDecoration(
+                                  color:
+                                      BougaColors.mint.withValues(alpha: .12),
+                                  borderRadius: BorderRadius.circular(16)),
+                              child: const Icon(Icons.folder_outlined,
+                                  color: BougaColors.mint)),
+                          const SizedBox(width: 16),
+                          Expanded(
+                              child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                Text(c,
+                                    style: const TextStyle(
+                                        fontSize: 19,
+                                        fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 5),
+                                Text('${_groupCounts[c] ?? 0} رابط',
+                                    style: const TextStyle(
+                                        color: BougaColors.muted, fontSize: 13))
+                              ])),
+                          const Icon(Icons.chevron_left,
+                              textDirection: TextDirection.ltr),
+                        ])))))),
+        OutlinedButton.icon(
+            onPressed: _newGroup,
+            icon: const Icon(Icons.add),
+            label: const Padding(
+                padding: EdgeInsets.all(17),
+                child: Text('مجموعة جديدة', style: TextStyle(fontSize: 17)))),
+      ]);
+
+  Future<void> _openContent(Map<String, Object?> item) async {
+    final raw = item['url']?.toString() ?? '';
+    final uri = Uri.tryParse(raw);
+    if (uri == null ||
+        !['https', 'http'].contains(uri.scheme) ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty) {
+      return;
+    }
+    if (!kIsWeb &&
+        defaultTargetPlatform == TargetPlatform.android &&
+        uri.scheme == 'https') {
+      final embedded =
+          EmbeddedContent.fromUrl(raw) ?? EmbeddedContent(uri, 'قراءة الرابط');
+      await _db!.markOpened(item['id'].toString());
+      if (!mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) =>
+              EmbeddedContentPage(content: embedded, originalUrl: raw)));
+    } else {
+      if (await _linkOpener.open(raw) == LinkOpenResult.opened) {
+        await _db!.markOpened(item['id'].toString());
+      }
+    }
+    await _refresh();
+  }
+
+  Widget _linkRow(Map<String, Object?> item) => SavedLinkCard(
+      item: item,
+      onOpen: () => _openContent(item),
+      onEdit: () => _details(item));
+
   @override
   Widget build(BuildContext context) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: Scaffold(
-          appBar: AppBar(
-              actions: [
-                IconButton(
-                    tooltip: 'الإعدادات',
-                    onPressed: _loading
-                        ? null
-                        : () => Navigator.of(context).push(MaterialPageRoute(
-                            builder: (_) => SettingsPage(
-                                onImportBackup: _importBackup,
-                                onExportBackup: _exportBackup))),
-                    icon: const Icon(Icons.settings_outlined))
-              ],
-              title: const Column(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+            toolbarHeight: 88,
+            automaticallyImplyLeading: false,
+            title: Row(children: [
+              ClipRRect(
+                  borderRadius: BorderRadius.circular(15),
+                  child: Image.asset('assets/icon/bouga-icon-source.jpg',
+                      width: 48, height: 48)),
+              const SizedBox(width: 12),
+              const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('بُؤجة',
                         style: TextStyle(
-                            letterSpacing: 2, fontWeight: FontWeight.w800)),
-                    Text('روابطك المهمة، في مكان واحد.',
+                            fontSize: 30,
+                            color: BougaColors.mint,
+                            fontWeight: FontWeight.bold)),
+                    SizedBox(height: 3),
+                    Text('مساحة لأفكارك',
                         style:
-                            TextStyle(fontSize: 11, color: BougaColors.muted)),
-                  ])),
-          bottomNavigationBar: SafeArea(
-              child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                  child: FilledButton.icon(
-                      onPressed: _loading ? null : _add,
-                      icon: const Icon(Icons.add_link),
-                      label: const Padding(
-                          padding: EdgeInsets.all(14),
-                          child: Text('إضافة رابط',
-                              style: TextStyle(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.bold)))))),
-          body: _loading
-              ? const Center(child: CircularProgressIndicator())
-              : _startupError != null
-                  ? Center(
-                      child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Text(
-                              'حصلت مشكلة في فتح بُؤجة:\n$_startupError',
-                              textAlign: TextAlign.center)))
-                  : RefreshIndicator(
-                      onRefresh: _refresh,
-                      child: ListView(
-                          padding: const EdgeInsets.all(16),
-                          children: [
-                            const Text('مكتبتك',
-                                style: TextStyle(color: BougaColors.mint)),
-                            const SizedBox(height: 8),
-                            const Text('احفظ. رتّب. وارجع للمهم.',
-                                style: TextStyle(
-                                    fontSize: 21, fontWeight: FontWeight.bold)),
-                            const SizedBox(height: 16),
+                            TextStyle(fontSize: 12, color: BougaColors.muted))
+                  ]),
+            ]),
+            actions: [
+              IconButton(
+                  tooltip: 'الإعدادات',
+                  onPressed: _loading
+                      ? null
+                      : () => Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => SettingsPage(
+                              onImportBackup: _importBackup,
+                              onExportBackup: _exportBackup))),
+                  icon: const Icon(Icons.settings_outlined)),
+              const SizedBox(width: 12)
+            ]),
+        bottomNavigationBar: Container(
+            decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: BougaColors.outline))),
+            child: SafeArea(
+                child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                    child: Row(children: [
+                      _navItem(0, Icons.grid_view_rounded, 'الرئيسية'),
+                      _navItem(1, Icons.folder_outlined, 'المجموعات'),
+                    ])))),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _startupError != null
+                ? Center(
+                    child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child:
+                            Text('حصلت مشكلة في فتح بُؤجة:\n$_startupError')))
+                : RefreshIndicator(
+                    onRefresh: _refresh,
+                    child: ListView(
+                        padding: const EdgeInsets.fromLTRB(24, 14, 24, 30),
+                        children: [
+                          if (_tab == 1)
+                            _groups()
+                          else ...[
                             TextField(
                                 onChanged: (v) {
                                   _query = v;
                                   _refresh();
                                 },
-                                decoration: const InputDecoration(
-                                    hintText: 'دوّر في بُؤجتك...',
-                                    prefixIcon: Icon(Icons.search))),
-                            const SizedBox(height: 10),
-                            Row(children: [
-                              const Text('مجموعاتك',
+                                decoration: InputDecoration(
+                                    hintText: 'بتدور على إيه؟',
+                                    prefixIcon: const Icon(Icons.search),
+                                    contentPadding: const EdgeInsets.all(18),
+                                    border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(30),
+                                        borderSide: BorderSide.none),
+                                    enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(30),
+                                        borderSide: BorderSide.none))),
+                            if (_links.isEmpty &&
+                                _query.isEmpty &&
+                                !_onlyUnopened) ...[
+                              const SizedBox(height: 66),
+                              Center(
+                                  child: Container(
+                                      padding: const EdgeInsets.all(24),
+                                      decoration: BoxDecoration(
+                                          color: BougaColors.mint
+                                              .withValues(alpha: .12),
+                                          borderRadius:
+                                              BorderRadius.circular(28)),
+                                      child: const Icon(Icons.link,
+                                          size: 40, color: BougaColors.mint))),
+                              const SizedBox(height: 26),
+                              const Text('حاجات تستاهل ترجع لها.',
+                                  textAlign: TextAlign.center,
                                   style: TextStyle(
-                                      fontSize: 20,
+                                      fontSize: 27,
                                       fontWeight: FontWeight.bold)),
-                              const Spacer(),
-                              TextButton.icon(
-                                  onPressed: _newGroup,
+                              const SizedBox(height: 15),
+                              const Text(
+                                  'احفظ أول رابط ليك، أو شاركه لبُؤجة من أي تطبيق.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                      color: BougaColors.muted,
+                                      fontSize: 16,
+                                      height: 1.6)),
+                              const SizedBox(height: 44),
+                            ] else ...[
+                              const SizedBox(height: 18),
+                              FilledButton.icon(
+                                  onPressed: _add,
                                   icon: const Icon(Icons.add),
-                                  label: const Text('مجموعة جديدة'))
-                            ]),
-                            if (_categories.isEmpty)
-                              const Card(
-                                  child: Padding(
-                                      padding: EdgeInsets.all(22),
-                                      child: Text(
-                                          'مفيش مجموعات لسه. اعمل أول مجموعة بالاسم اللي يناسبك.'))),
-                            if (_categories.isNotEmpty)
-                              LayoutBuilder(
-                                  builder: (context, constraints) => Wrap(
-                                      spacing: 10,
-                                      runSpacing: 10,
-                                      children: _categories
-                                          .map((c) => SizedBox(
-                                              width:
-                                                  (constraints.maxWidth - 10) /
-                                                      2,
-                                              child: Card(
-                                                  child: InkWell(
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                              18),
-                                                      onTap: () {
-                                                        setState(() =>
-                                                            _category = c);
-                                                        _refresh();
-                                                      },
-                                                      child: Padding(
-                                                          padding:
-                                                              const EdgeInsets
-                                                                  .all(18),
-                                                          child: Column(
-                                                              crossAxisAlignment:
-                                                                  CrossAxisAlignment
-                                                                      .start,
-                                                              children: [
-                                                                Icon(
-                                                                    Icons
-                                                                        .folder_outlined,
-                                                                    color: _category ==
-                                                                            c
-                                                                        ? BougaColors
-                                                                            .gold
-                                                                        : BougaColors
-                                                                            .mint),
-                                                                const SizedBox(
-                                                                    height: 12),
-                                                                Text(c,
-                                                                    style: const TextStyle(
-                                                                        fontWeight:
-                                                                            FontWeight
-                                                                                .bold,
-                                                                        fontSize:
-                                                                            18)),
-                                                                const SizedBox(
-                                                                    height: 4),
-                                                                Text(
-                                                                    '${_groupCounts[c] ?? 0} رابط',
-                                                                    style: const TextStyle(
-                                                                        color: BougaColors
-                                                                            .muted))
-                                                              ]))))))
-                                          .toList())),
-                            Align(
-                                alignment: Alignment.centerRight,
-                                child: TextButton(
-                                    onPressed: () {
-                                      setState(() => _category = 'الكل');
+                                  label: const Padding(
+                                      padding: EdgeInsets.all(16),
+                                      child: Text('إضافة رابط',
+                                          style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold)))),
+                              const SizedBox(height: 20),
+                              Row(children: [
+                                const Expanded(
+                                    child: Text('روابطك المحفوظة',
+                                        style: TextStyle(
+                                            fontSize: 21,
+                                            fontWeight: FontWeight.bold))),
+                                FilterChip(
+                                    label: const Text('لسه مفتحتهاش'),
+                                    selected: _onlyUnopened,
+                                    onSelected: (v) {
+                                      setState(() => _onlyUnopened = v);
                                       _refresh();
-                                    },
-                                    child: Text(_category == 'الكل'
-                                        ? 'كل الروابط'
-                                        : 'عرض كل الروابط (المحدد: $_category)'))),
-                            const SizedBox(height: 14),
-                            Card(
-                                child: SwitchListTile(
-                                    title: const Text('لم أفتحها بعد'),
-                                    subtitle: const Text(
-                                        'للروابط الجديدة بعد تفعيل التتبع، حالة الروابط الأقدم غير معروفة.'),
-                                    value: _onlyUnopened,
-                                    onChanged: (value) {
-                                      setState(() => _onlyUnopened = value);
-                                      _refresh();
-                                    })),
-                            const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 10),
-                                child: Text(
-                                    'التذكير لسه غير مفعّل. هنحدد معاده لما تختاره.',
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        color: BougaColors.muted))),
-                            Text('المحفوظات: ${_links.length}',
-                                style:
-                                    const TextStyle(color: BougaColors.mint)),
-                            const SizedBox(height: 8),
-                            if (_links.isEmpty)
-                              const Card(
-                                  child: Padding(
-                                      padding: EdgeInsets.all(24),
-                                      child: Text(
-                                          'ابدأ برابط مهم ليك.\nاضغط «إضافة رابط» أو شاركه لبُؤجة من تطبيق تاني.')))
-                            else
-                              ..._links.map((item) => Card(
-                                      child: ListTile(
-                                    onTap: () => _details(item),
-                                    leading: const CircleAvatar(
-                                        child: Icon(Icons.link)),
-                                    title: Text(
-                                        (item['title']
-                                                    ?.toString()
-                                                    .trim()
-                                                    .isNotEmpty ??
-                                                false)
-                                            ? item['title'].toString()
-                                            : item['url'].toString(),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis),
-                                    subtitle: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                              '${item['category']} • ${item['kind']}'),
-                                          const SizedBox(height: 6),
-                                          LinearProgressIndicator(
-                                              value:
-                                                  ((item['progress'] as int? ??
-                                                              0)
-                                                          .clamp(0, 100)) /
-                                                      100),
-                                        ]),
-                                    trailing: const Icon(Icons.chevron_left),
-                                  ))),
-                            const SizedBox(height: 80),
-                          ])),
-        ),
-      );
+                                    })
+                              ]),
+                              _DateSort(
+                                  oldestFirst: _oldestFirst,
+                                  onChanged: (v) {
+                                    setState(() => _oldestFirst = v);
+                                    _refresh();
+                                  }),
+                              if (_onlyUnopened)
+                                const Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 10),
+                                    child: Text(
+                                        'حالة الروابط الأقدم غير معروفة. التصفية للروابط الجديدة.',
+                                        style: TextStyle(
+                                            color: BougaColors.muted,
+                                            fontSize: 12))),
+                              if (_links.isEmpty)
+                                const Padding(
+                                    padding: EdgeInsets.all(24),
+                                    child: Text('مفيش روابط مطابقة.',
+                                        textAlign: TextAlign.center)),
+                              ..._links.map(_linkRow),
+                              const SizedBox(height: 20),
+                            ],
+                            if (_links.isEmpty &&
+                                _query.isEmpty &&
+                                !_onlyUnopened)
+                              FilledButton.icon(
+                                  onPressed: _add,
+                                  icon: const Icon(Icons.add),
+                                  label: const Padding(
+                                      padding: EdgeInsets.all(16),
+                                      child: Text('إضافة رابط',
+                                          style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold)))),
+                          ],
+                        ])),
+      ));
+
+  Widget _navItem(int index, IconData icon, String label) => Expanded(
+      child: TextButton(
+          onPressed: () {
+            setState(() {
+              _tab = index;
+              _category = 'الكل';
+            });
+            if (index == 0) _refresh();
+          },
+          child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Icon(icon,
+                    color:
+                        _tab == index ? BougaColors.mint : BougaColors.muted),
+                const SizedBox(height: 6),
+                Text(label,
+                    style: TextStyle(
+                        color: _tab == index
+                            ? BougaColors.mint
+                            : BougaColors.muted,
+                        fontSize: 12))
+              ]))));
+}
+
+class _GroupLinksPage extends StatefulWidget {
+  const _GroupLinksPage(
+      {required this.group,
+      required this.load,
+      required this.add,
+      required this.details,
+      required this.open});
+  final String group;
+  final Future<List<Map<String, Object?>>> Function(bool) load;
+  final Future<void> Function() add;
+  final Future<void> Function(Map<String, Object?>) details;
+  final Future<void> Function(Map<String, Object?>) open;
+  @override
+  State<_GroupLinksPage> createState() => _GroupLinksPageState();
+}
+
+class _GroupLinksPageState extends State<_GroupLinksPage> {
+  List<Map<String, Object?>> _items = [];
+  String _query = '';
+  bool _oldestFirst = false;
+  bool _loading = true;
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final items = await widget.load(_oldestFirst);
+    if (mounted) {
+      setState(() {
+        _items = items;
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final items = _items
+        .where((i) => '${i['title']} ${i['url']} ${i['note']}'
+            .toLowerCase()
+            .contains(_query.toLowerCase()))
+        .toList();
+    return Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          appBar: AppBar(title: Text(widget.group)),
+          bottomNavigationBar: SafeArea(
+              child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: FilledButton.icon(
+                      onPressed: () async {
+                        await widget.add();
+                        await _refresh();
+                      },
+                      icon: const Icon(Icons.add),
+                      label: const Padding(
+                          padding: EdgeInsets.all(15),
+                          child: Text('إضافة رابط للمجموعة'))))),
+          body: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : RefreshIndicator(
+                  onRefresh: _refresh,
+                  child: ListView(padding: const EdgeInsets.all(24), children: [
+                    Text('${_items.length} رابط',
+                        style: const TextStyle(color: BougaColors.muted)),
+                    const SizedBox(height: 18),
+                    TextField(
+                        onChanged: (v) => setState(() => _query = v),
+                        decoration: const InputDecoration(
+                            hintText: 'دوّر جوه المجموعة',
+                            prefixIcon: Icon(Icons.search))),
+                    const SizedBox(height: 20),
+                    _DateSort(
+                        oldestFirst: _oldestFirst,
+                        onChanged: (v) {
+                          setState(() => _oldestFirst = v);
+                          _refresh();
+                        }),
+                    if (items.isEmpty)
+                      const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text('مفيش روابط هنا لسه.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: BougaColors.muted))),
+                    ...items.map((item) => SavedLinkCard(
+                        item: item,
+                        onOpen: () async {
+                          await widget.open(item);
+                          await _refresh();
+                        },
+                        onEdit: () async {
+                          await widget.details(item);
+                          await _refresh();
+                        })),
+                  ])),
+        ));
+  }
+}
+
+class _DateSort extends StatelessWidget {
+  const _DateSort({required this.oldestFirst, required this.onChanged});
+  final bool oldestFirst;
+  final ValueChanged<bool> onChanged;
+  @override
+  Widget build(BuildContext context) =>
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        DropdownButton<bool>(
+            value: oldestFirst,
+            underline: const SizedBox.shrink(),
+            icon: const Icon(Icons.sort, size: 18),
+            items: const [
+              DropdownMenuItem(value: false, child: Text('الأحدث أولًا')),
+              DropdownMenuItem(value: true, child: Text('الأقدم أولًا'))
+            ],
+            onChanged: (value) {
+              if (value != null) onChanged(value);
+            }),
+        const Text(
+            'حسب تاريخ الحفظ المسجّل؛ القديم المستورد حسب تاريخه المتاح.',
+            style: TextStyle(fontSize: 11, color: BougaColors.muted)),
+      ]);
 }
