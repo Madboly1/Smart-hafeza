@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:bouga/features/legacy_import/data/legacy_import_contract.dart';
 import 'dart:convert';
 
 import 'package:bouga/features/legacy_import/data/bouga_database.dart';
@@ -19,6 +21,73 @@ void main() {
   });
 
   tearDown(() async => database.close());
+
+  test('version1 upgrade preserves links and groups with unknown opened state',
+      () async {
+    final temp = await Directory.systemTemp.createTemp('bouga-migration-test');
+    final path = '${temp.path}/old.db';
+    final old = await databaseFactory.openDatabase(path,
+        options: OpenDatabaseOptions(
+            version: 1,
+            onCreate: (db, _) async {
+              await db.execute(LegacyImportSql.createCategories);
+              await db.execute(LegacyImportSql.createLinks);
+              await db.execute(LegacyImportSql.createImportLog);
+              await db.insert('categories', {'name': 'قديم', 'sort_order': 1});
+              await db.insert('links', {
+                'id': 'existing',
+                'url': 'https://old.example',
+                'category': 'قديم',
+                'note': 'مهم',
+                'last_seen': 123
+              });
+            }));
+    await old.close();
+    final upgraded = await BougaDatabase.open(databasePath: path);
+    final row = (await upgraded.getLinks()).single;
+    expect(row['note'], 'مهم');
+    expect(row['open_state'], 'unknown');
+    expect(row['last_seen'], 123);
+    expect(await upgraded.getCategories(), ['قديم']);
+    await upgraded.close();
+    await temp.delete(recursive: true);
+  });
+
+  test('fresh groups are empty and users create their own without fixed seeds',
+      () async {
+    expect(await database.getCategories(), isEmpty);
+    await database.addCategory('مجموعتي');
+    expect(await database.getCategories(), ['مجموعتي']);
+  });
+
+  test(
+      'new unopened and imported unknown remain distinct and backup preserves state',
+      () async {
+    await database.addLink(
+        url: 'https://new.example', title: '', category: '', kind: 'رابط');
+    expect((await database.getLinks()).single['open_state'], 'unopened');
+    await database.importLegacyJson(jsonEncode({
+      'links': [
+        {'id': 'legacy', 'url': 'https://old.example', 'seen': 123}
+      ]
+    }));
+    final old =
+        (await database.getLinks()).firstWhere((row) => row['id'] == 'legacy');
+    expect(old['open_state'], 'unknown');
+    final current = (await database.getLinks())
+        .firstWhere((row) => row['url'] == 'https://new.example');
+    await database.markOpened(current['id'] as String);
+    final backup = await database.exportLegacyJson();
+    final restored = await BougaDatabase.open(
+      databasePath: inMemoryDatabasePath,
+    );
+    await restored.importLegacyJson(backup);
+    expect(
+        (await restored.getLinks()).firstWhere(
+            (row) => row['url'] == 'https://new.example')['open_state'],
+        'opened');
+    await restored.close();
+  });
 
   test('imports records and preserves unrecognized legacy properties',
       () async {
