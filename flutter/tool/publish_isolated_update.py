@@ -21,7 +21,7 @@ for abi in ['arm64-v8a','armeabi-v7a','x86_64']:
  assert code > 3002 + offset
  manifest={
  'versionCode':code,'versionName':f'1.0.{os.environ["GITHUB_RUN_NUMBER"]}',
- 'releaseMessage':'إصلاح استقبال الروابط من التطبيقات الأخرى، والاسم الظاهر بُؤجة، ونظام تنزيل التحديثات والتحقق من سلامتها.',
+ 'releaseMessage':'مجموعات فارغة تنشئها بنفسك، استقبال المشاركات، عرض مضمّن للمحتوى العام المدعوم، وتحديثات مع التحقق من الملف.',
  'apkUrl':f'https://github.com/{repo}/releases/download/{tag}/{apk.name}',
  'sha256':hashlib.sha256(apk.read_bytes()).hexdigest(),
  'packageName':'com.hafeza.links.trial','certificateSha256':'5abedd4dafc3df4a732f97aa27af7aeb6df24c452ac5d2af8b5f4e2b4db97d3d',
