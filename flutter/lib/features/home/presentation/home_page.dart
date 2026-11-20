@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:material_ui/material_ui.dart';
 import '../../links/data/external_link_opener.dart';
+import '../../links/data/incoming_share_service.dart';
 import '../../legacy_import/data/backup_export_service.dart';
 import '../../../core/theme/bouga_tokens.dart';
 import '../../legacy_import/data/bouga_database.dart';
@@ -17,6 +19,9 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final ExternalLinkOpener _linkOpener = ExternalLinkOpener();
+  final IncomingShareService _incomingShare = IncomingShareService();
+  final List<String> _pendingShares = [];
+  bool _shareDialogOpen = false;
   BougaDatabase? _db;
   BougaLinksRepository? _repo;
   List<Map<String, Object?>> _links = [];
@@ -44,6 +49,12 @@ class _HomePageState extends State<HomePage> {
     } finally {
       if (mounted) {
         setState(() => _loading = false);
+        if (_repo != null) {
+          unawaited(_incomingShare.start((text) {
+            _pendingShares.add(text);
+            unawaited(_showPendingShares());
+          }));
+        }
       }
     }
   }
@@ -64,6 +75,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    _incomingShare.dispose();
     _db?.close();
     super.dispose();
   }
@@ -154,8 +166,28 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _add() async {
-    final url = TextEditingController();
+  Future<void> _showPendingShares() async {
+    if (_shareDialogOpen || !mounted || _repo == null) return;
+    _shareDialogOpen = true;
+    try {
+      while (mounted && _pendingShares.isNotEmpty) {
+        final url =
+            IncomingShareService.firstWebUrl(_pendingShares.removeAt(0));
+        if (url == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('المشاركة دي مفيهاش رابط ويب صالح.')),
+          );
+          continue;
+        }
+        await _add(sharedUrl: url);
+      }
+    } finally {
+      _shareDialogOpen = false;
+    }
+  }
+
+  Future<void> _add({String? sharedUrl}) async {
+    final url = TextEditingController(text: sharedUrl);
     final title = TextEditingController();
     final category = TextEditingController(text: 'أخرى');
     final form = GlobalKey<FormState>();
