@@ -216,7 +216,7 @@ class BougaDatabase {
   }
 
   Future<List<Map<String, Object?>>> getLinks(
-      {String query = '', String? category}) async {
+      {String query = '', String? category, bool oldestFirst = false}) async {
     final clauses = <String>[];
     final args = <Object?>[];
     if (query.trim().isNotEmpty) {
@@ -232,7 +232,9 @@ class BougaDatabase {
       'links',
       where: clauses.isEmpty ? null : clauses.join(' AND '),
       whereArgs: args.isEmpty ? null : args,
-      orderBy: 'last_seen DESC, rowid DESC',
+      orderBy: oldestFirst
+          ? 'last_seen ASC, rowid ASC'
+          : 'last_seen DESC, rowid DESC',
     );
   }
 
