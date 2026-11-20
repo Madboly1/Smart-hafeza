@@ -396,9 +396,7 @@ class _HomePageState extends State<HomePage> {
                               await _repo!.update(
                                   id: id,
                                   title: title.text,
-                                  category: category.text.trim().isEmpty
-                                      ? 'أخرى'
-                                      : category.text.trim(),
+                                  category: category.text.trim(),
                                   note: note.text,
                                   progress: progress);
                               if (context.mounted) {
