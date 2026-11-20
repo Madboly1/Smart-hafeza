@@ -1,5 +1,5 @@
 name: BOUGA stable signed trial
-# Build adopted empty-first groups and supported embedded viewer.
+# Build approved logo-derived UI, sorting and saved-content preview.
 
 on:
   push:
