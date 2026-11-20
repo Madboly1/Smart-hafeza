@@ -1,5 +1,5 @@
 name: BOUGA stable signed trial
-# Build approved quick dark ink reveal and subtle press depth.
+# Build approved local unopened reminders and double-back exit.
 
 on:
   push:
@@ -81,7 +81,10 @@ jobs:
           fi
 
       - name: Configure Android incoming text sharing
-        run: python3 tool/configure_incoming_share.py
+        run: |
+          python3 tool/test_reminders.py
+          python3 tool/configure_incoming_share.py
+          python3 tool/configure_reminders.py
 
       - name: Install dependencies
         run: flutter pub get
