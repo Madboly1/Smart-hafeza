@@ -66,7 +66,9 @@ class IncomingShareService {
       if (uri != null &&
           (uri.scheme == 'http' || uri.scheme == 'https') &&
           uri.host.isNotEmpty &&
-          uri.userInfo.isEmpty) return candidate;
+          uri.userInfo.isEmpty) {
+        return candidate;
+      }
     }
     return null;
   }
