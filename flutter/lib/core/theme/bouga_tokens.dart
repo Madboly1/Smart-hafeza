@@ -1,15 +1,15 @@
 import 'package:material_ui/material_ui.dart';
 
 abstract final class BougaColors {
-  static const background = Color(0xFF071B20);
-  static const surface = Color(0xFF12343A);
-  static const surfaceRaised = Color(0xFF194249);
-  static const mint = Color(0xFF9BE2C5);
-  static const gold = Color(0xFFE9C78D);
-  static const text = Color(0xFFF1F7F4);
-  static const muted = Color(0xFF91AAA7);
+  static const background = Color(0xFF101418);
+  static const surface = Color(0xFF1C242A);
+  static const surfaceRaised = Color(0xFF292D36);
+  static const mint = Color(0xFFE0A060);
+  static const gold = Color(0xFFE0A060);
+  static const text = Color(0xFFF3F4F7);
+  static const muted = Color(0xFFA4A8B3);
   static const danger = Color(0xFFFF827C);
-  static const outline = Color(0x267FE0C2);
+  static const outline = Color(0xFF3A3D45);
 }
 
 abstract final class BougaSpacing {
