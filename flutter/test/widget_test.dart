@@ -7,6 +7,6 @@ void main() {
     await tester.pumpWidget(const BougaApp());
 
     expect(find.byType(MaterialApp), findsOneWidget);
-    expect(find.text('BOUGA'), findsOneWidget);
+    expect(find.text('بُؤجة'), findsOneWidget);
   });
 }
