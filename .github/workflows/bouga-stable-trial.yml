@@ -1,5 +1,5 @@
 name: BOUGA stable signed trial
-# Build platform filters and verify in-app updater path.
+# Preserve Arabic update notes on already-installed updater clients.
 
 on:
   push:
