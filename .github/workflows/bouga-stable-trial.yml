@@ -1,4 +1,5 @@
 name: BOUGA stable signed trial
+# Re-run strict checks after CI-toolchain formatting repair.
 
 on:
   push:
