@@ -83,7 +83,17 @@ class BougaDatabase {
 
       for (final link in snapshot.links) {
         final fields = link.fields;
-        const known = {'id', 'url', 'k', 'c', 'title', 'img', 'p', 'note', 'seen'};
+        const known = {
+          'id',
+          'url',
+          'k',
+          'c',
+          'title',
+          'img',
+          'p',
+          'note',
+          'seen'
+        };
         final extra = <String, dynamic>{
           for (final entry in fields.entries)
             if (!known.contains(entry.key)) entry.key: entry.value,
@@ -135,9 +145,8 @@ class BougaDatabase {
         columns: ['name'],
         orderBy: 'sort_order, name',
       );
-      final categories = categoryRows
-          .map((row) => row['name'] as String)
-          .toList();
+      final categories =
+          categoryRows.map((row) => row['name'] as String).toList();
       final linkRows = await txn.query(
         'links',
         orderBy: 'last_seen DESC, rowid DESC',
@@ -180,7 +189,8 @@ class BougaDatabase {
     return source;
   }
 
-  Future<List<Map<String, Object?>>> getLinks({String query = '', String? category}) async {
+  Future<List<Map<String, Object?>>> getLinks(
+      {String query = '', String? category}) async {
     final clauses = <String>[];
     final args = <Object?>[];
     if (query.trim().isNotEmpty) {
@@ -201,7 +211,8 @@ class BougaDatabase {
   }
 
   Future<List<String>> getCategories() async {
-    final rows = await _database.query('categories', orderBy: 'sort_order, name');
+    final rows =
+        await _database.query('categories', orderBy: 'sort_order, name');
     final values = rows.map((row) => row['name'] as String).toList();
     final linkRows = await _database.rawQuery(
       "SELECT DISTINCT category FROM links WHERE category NOT IN (${values.isEmpty ? "''" : List.filled(values.length, '?').join(',')})",
@@ -220,32 +231,60 @@ class BougaDatabase {
   }
 
   Future<int> countLinks() async =>
-      Sqflite.firstIntValue(await _database.rawQuery('SELECT COUNT(*) FROM links')) ?? 0;
+      Sqflite.firstIntValue(
+          await _database.rawQuery('SELECT COUNT(*) FROM links')) ??
+      0;
 
-  Future<int> addLink({required String url, required String title, required String category, required String kind}) async {
+  Future<int> addLink(
+      {required String url,
+      required String title,
+      required String category,
+      required String kind}) async {
     final normalized = url.trim();
-    final existing = await _database.query('links', where: 'url = ?', whereArgs: [normalized], limit: 1);
+    final existing = await _database.query('links',
+        where: 'url = ?', whereArgs: [normalized], limit: 1);
     if (existing.isNotEmpty) {
       return 0;
     }
     final id = DateTime.now().microsecondsSinceEpoch.toString();
     await _database.insert('links', {
-      'id': id, 'url': normalized, 'title': title.trim(), 'category': category,
-      'kind': kind, 'progress': 0, 'note': '', 'last_seen': DateTime.now().millisecondsSinceEpoch,
+      'id': id,
+      'url': normalized,
+      'title': title.trim(),
+      'category': category,
+      'kind': kind,
+      'progress': 0,
+      'note': '',
+      'last_seen': DateTime.now().millisecondsSinceEpoch,
       'extra_json': '{}',
     });
-    await _database.insert('categories', {'name': category, 'sort_order': 999}, conflictAlgorithm: ConflictAlgorithm.ignore);
+    await _database.insert('categories', {'name': category, 'sort_order': 999},
+        conflictAlgorithm: ConflictAlgorithm.ignore);
     return 1;
   }
 
-  Future<void> updateLink({required String id, required String title, required String category, required String note, required int progress}) async {
-    await _database.update('links', {
-      'title': title, 'category': category, 'note': note, 'progress': progress.clamp(0, 100),
-    }, where: 'id = ?', whereArgs: [id]);
-    await _database.insert('categories', {'name': category, 'sort_order': 999}, conflictAlgorithm: ConflictAlgorithm.ignore);
+  Future<void> updateLink(
+      {required String id,
+      required String title,
+      required String category,
+      required String note,
+      required int progress}) async {
+    await _database.update(
+        'links',
+        {
+          'title': title,
+          'category': category,
+          'note': note,
+          'progress': progress.clamp(0, 100),
+        },
+        where: 'id = ?',
+        whereArgs: [id]);
+    await _database.insert('categories', {'name': category, 'sort_order': 999},
+        conflictAlgorithm: ConflictAlgorithm.ignore);
   }
 
-  Future<void> deleteLink(String id) => _database.delete('links', where: 'id = ?', whereArgs: [id]);
+  Future<void> deleteLink(String id) =>
+      _database.delete('links', where: 'id = ?', whereArgs: [id]);
 
   Future<void> close() => _database.close();
 }
