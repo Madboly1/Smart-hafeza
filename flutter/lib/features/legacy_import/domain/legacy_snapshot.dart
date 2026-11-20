@@ -23,7 +23,9 @@ class LegacySnapshot {
 
     final categories = <String>[];
     for (final item in (rawCategories as List? ?? const [])) {
-      if (item is String && item.trim().isNotEmpty && !categories.contains(item.trim())) {
+      if (item is String &&
+          item.trim().isNotEmpty &&
+          !categories.contains(item.trim())) {
         categories.add(item.trim());
       }
     }
