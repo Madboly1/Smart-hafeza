@@ -17,16 +17,16 @@ jobs:
       - name: Checkout selected trial branch
         uses: actions/checkout@v4
         with:
-          ref: \${{ github.ref }}
+          ref: ${{ github.ref }}
 
       - name: Fail closed when signing secrets are unavailable
         shell: bash
         env:
-          BOUGA_KEYSTORE_BASE64: \${{ secrets.BOUGA_KEYSTORE_BASE64 }}
-          BOUGA_SIGNING_PASSWORD: \${{ secrets.BOUGA_SIGNING_PASSWORD }}
+          BOUGA_KEYSTORE_BASE64: ${{ secrets.BOUGA_KEYSTORE_BASE64 }}
+          BOUGA_SIGNING_PASSWORD: ${{ secrets.BOUGA_SIGNING_PASSWORD }}
         run: |
           set -euo pipefail
-          if [[ -z "$BOUGA_KEYSTORE_BASE64" || -z "$BOUGA_SIGNING_PASSWORD" ]]; then
+          if [[ -z "${BOUGA_KEYSTORE_BASE64}" || -z "${BOUGA_SIGNING_PASSWORD}" ]]; then
             echo "Required BOUGA trial signing secrets are not configured." >&2
             exit 1
           fi
@@ -52,27 +52,27 @@ jobs:
             sed -i 's/applicationId = "com.hafeza.bouga"/applicationId = "com.hafeza.links.trial"/' android/app/build.gradle.kts
             grep -q 'compileSdk = 36' android/app/build.gradle.kts
             grep -q 'applicationId = "com.hafeza.links.trial"' android/app/build.gradle.kts
-            if grep -Fq 'applicationId = "com.hafeza.links"' android/app/build.gradle.kts; then
-              echo "Production Android identity detected; refusing to build." >&2
-              exit 1
-            fi
           elif [[ -f android/app/build.gradle ]]; then
             sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 36/' android/app/build.gradle
             sed -i "s/applicationId 'com.hafeza.bouga'/applicationId 'com.hafeza.links.trial'/" android/app/build.gradle
             grep -q 'compileSdkVersion 36' android/app/build.gradle
             grep -q "applicationId 'com.hafeza.links.trial'" android/app/build.gradle
-            if grep -Fq "applicationId 'com.hafeza.links'" android/app/build.gradle; then
-              echo "Production Android identity detected; refusing to build." >&2
-              exit 1
-            fi
           else
             echo "Generated Android app Gradle file not found" >&2
             exit 1
           fi
 
-          test -f android/app/src/main/AndroidManifest.xml
+          if [[ ! -f android/app/src/main/AndroidManifest.xml ]]; then
+            echo "Generated AndroidManifest.xml not found" >&2
+            exit 1
+          fi
           sed -i 's/android:label="bouga"/android:label="بؤجة تجريبي"/' android/app/src/main/AndroidManifest.xml
           grep -q 'android:label="بؤجة تجريبي"' android/app/src/main/AndroidManifest.xml
+
+          if grep -Eq 'applicationId[[:space:]]*(=)?[[:space:]]*["'\'' ]com\.hafeza\.links["'\'']' android/app/build.gradle*; then
+            echo "Production application ID detected; refusing to build." >&2
+            exit 1
+          fi
 
       - name: Install dependencies
         run: flutter pub get
@@ -89,38 +89,40 @@ jobs:
       - name: Reconstruct encrypted trial keystore in runner temp
         shell: bash
         env:
-          BOUGA_KEYSTORE_BASE64: \${{ secrets.BOUGA_KEYSTORE_BASE64 }}
-          BOUGA_SIGNING_PASSWORD: \${{ secrets.BOUGA_SIGNING_PASSWORD }}
+          BOUGA_KEYSTORE_BASE64: ${{ secrets.BOUGA_KEYSTORE_BASE64 }}
+          BOUGA_SIGNING_PASSWORD: ${{ secrets.BOUGA_SIGNING_PASSWORD }}
         run: |
           set -euo pipefail
           umask 077
           KEYSTORE_PATH="$RUNNER_TEMP/bouga-trial-signing.p12"
+          trap 'rm -f "$KEYSTORE_PATH"' EXIT
           printf '%s' "$BOUGA_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
           test -s "$KEYSTORE_PATH"
           openssl pkcs12 -in "$KEYSTORE_PATH" -passin env:BOUGA_SIGNING_PASSWORD -noout
           printf 'BOUGA_KEYSTORE_PATH=%s\n' "$KEYSTORE_PATH" >> "$GITHUB_ENV"
+          rm -f "$KEYSTORE_PATH"
+          trap - EXIT
 
       - name: Configure mandatory trial release signing
         shell: bash
         run: |
           set -euo pipefail
-          test -n "\${BOUGA_KEYSTORE_PATH:-}"
+          test -n "${BOUGA_KEYSTORE_PATH:-}"
           test -s "$BOUGA_KEYSTORE_PATH"
           if [[ -f android/app/build.gradle.kts ]]; then
             cat >> android/app/build.gradle.kts <<'GRADLE'
 
           // BOUGA isolated trial signing: never use the generated debug key.
-          val bougaTrialKeystorePath = System.getenv("BOUGA_KEYSTORE_PATH")
-              ?: error("BOUGA_KEYSTORE_PATH is required")
-          val bougaTrialSigningPassword = System.getenv("BOUGA_SIGNING_PASSWORD")
-              ?: error("BOUGA_SIGNING_PASSWORD is required")
           android {
               signingConfigs {
                   create("bougaTrialRelease") {
-                      storeFile = file(bougaTrialKeystorePath)
-                      storePassword = bougaTrialSigningPassword
+                      storeFile = file(System.getenv("BOUGA_KEYSTORE_PATH")
+                          ?: error("BOUGA_KEYSTORE_PATH is required"))
+                      storePassword = System.getenv("BOUGA_SIGNING_PASSWORD")
+                          ?: error("BOUGA_SIGNING_PASSWORD is required")
                       keyAlias = "bouga"
-                      keyPassword = bougaTrialSigningPassword
+                      keyPassword = System.getenv("BOUGA_SIGNING_PASSWORD")
+                          ?: error("BOUGA_SIGNING_PASSWORD is required")
                   }
               }
               buildTypes {
@@ -134,18 +136,13 @@ jobs:
             cat >> android/app/build.gradle <<'GRADLE'
 
           // BOUGA isolated trial signing: never use the generated debug key.
-          def bougaTrialKeystorePath = System.getenv("BOUGA_KEYSTORE_PATH")
-          def bougaTrialSigningPassword = System.getenv("BOUGA_SIGNING_PASSWORD")
-          if (!bougaTrialKeystorePath || !bougaTrialSigningPassword) {
-              throw new GradleException("BOUGA trial signing environment is required")
-          }
           android {
               signingConfigs {
                   bougaTrialRelease {
-                      storeFile file(bougaTrialKeystorePath)
-                      storePassword bougaTrialSigningPassword
+                      storeFile file(System.getenv("BOUGA_KEYSTORE_PATH") ?: { throw new GradleException("BOUGA_KEYSTORE_PATH is required") }())
+                      storePassword System.getenv("BOUGA_SIGNING_PASSWORD") ?: { throw new GradleException("BOUGA_SIGNING_PASSWORD is required") }()
                       keyAlias "bouga"
-                      keyPassword bougaTrialSigningPassword
+                      keyPassword System.getenv("BOUGA_SIGNING_PASSWORD") ?: { throw new GradleException("BOUGA_SIGNING_PASSWORD is required") }()
                   }
               }
               buildTypes {
@@ -163,10 +160,10 @@ jobs:
       - name: Build signed split-per-ABI trial release APKs
         shell: bash
         env:
-          BOUGA_SIGNING_PASSWORD: \${{ secrets.BOUGA_SIGNING_PASSWORD }}
+          BOUGA_SIGNING_PASSWORD: ${{ secrets.BOUGA_SIGNING_PASSWORD }}
         run: |
           set -euo pipefail
-          test -n "\${BOUGA_KEYSTORE_PATH:-}"
+          test -n "${BOUGA_KEYSTORE_PATH:-}"
           test -s "$BOUGA_KEYSTORE_PATH"
           test -n "$BOUGA_SIGNING_PASSWORD"
           BUILD_NUMBER=$((3000 + GITHUB_RUN_NUMBER))
@@ -185,6 +182,6 @@ jobs:
         if: always()
         shell: bash
         run: |
-          if [[ -n "\${BOUGA_KEYSTORE_PATH:-}" ]]; then
+          if [[ -n "${BOUGA_KEYSTORE_PATH:-}" ]]; then
             rm -f "$BOUGA_KEYSTORE_PATH"
           fi
