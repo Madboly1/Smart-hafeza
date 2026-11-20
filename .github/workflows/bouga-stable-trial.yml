@@ -1,5 +1,5 @@
 name: BOUGA stable signed trial
-# Incoming-share bridge and label repair, strict locally verified checks.
+# Verify ABI-specific monotonic version codes before publishing updates.
 
 on:
   push:
