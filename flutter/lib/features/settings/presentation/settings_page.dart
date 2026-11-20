@@ -1,5 +1,6 @@
+import 'dart:async';
 import 'package:material_ui/material_ui.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../data/android_update_service.dart';
 
 import '../../../core/theme/bouga_tokens.dart';
 import '../data/update_service.dart';
@@ -26,7 +27,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _updateStatus = null;
     });
 
-    final result = await UpdateService().checkForUpdate();
+    final result = await AndroidUpdateService().check();
     if (!mounted) return;
     setState(() {
       _checkingUpdates = false;
@@ -79,19 +80,51 @@ class _SettingsPageState extends State<SettingsPage> {
           FilledButton(
             onPressed: () async {
               Navigator.pop(dialogContext);
-              final opened = await launchUrl(
-                manifest.apkUrl,
-                mode: LaunchMode.externalApplication,
-              );
-              if (!opened && mounted) {
-                _showMessage('تعذر فتح رابط التحديث. حاول مرة أخرى.');
-              }
+              await _downloadUpdate(manifest);
             },
             child: const Text('تحديث الآن'),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _downloadUpdate(UpdateManifest manifest) async {
+    final progress = ValueNotifier<double?>(null);
+    unawaited(showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          title: const Text('جارٍ تنزيل التحديث'),
+          content: ValueListenableBuilder<double?>(
+            valueListenable: progress,
+            builder: (_, value, child) => Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                LinearProgressIndicator(value: value),
+                const SizedBox(height: 16),
+                const Text(
+                    'بعد التحقق من الملف هتفتح شاشة تثبيت أندرويد. وافق على التثبيت من المصدر ده لو طلب منك. بياناتك بتفضل زي ما هي، ما تمسحش التطبيق.')
+              ],
+            ),
+          ),
+        ),
+      ),
+    ));
+    String? error;
+    try {
+      await AndroidUpdateService()
+          .downloadAndInstall(manifest, (value) => progress.value = value);
+    } catch (_) {
+      error =
+          'تعذر تنزيل أو فتح التحديث. اتأكد من الإنترنت وجرّب تاني. ما تمسحش التطبيق.';
+    } finally {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      progress.dispose();
+    }
+    if (mounted && error != null) _showMessage(error);
   }
 
   String get _updateSubtitle {
