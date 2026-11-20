@@ -174,6 +174,7 @@ class _HomePageState extends State<HomePage> {
         final url =
             IncomingShareService.firstWebUrl(_pendingShares.removeAt(0));
         if (url == null) {
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('المشاركة دي مفيهاش رابط ويب صالح.')),
           );
