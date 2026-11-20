@@ -2,9 +2,6 @@ name: BOUGA Flutter foundation
 on:
   push:
     branches: [migration/flutter-foundation]
-    paths:
-      - "flutter/**"
-      - ".github/workflows/flutter-foundation.yml"
   pull_request:
     branches: [migration/flutter-foundation]
     paths:
