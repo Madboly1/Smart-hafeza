@@ -16,6 +16,23 @@ for tag, name in [('action', 'android.intent.action.SEND'),
                   ('category', 'android.intent.category.DEFAULT')]:
     ET.SubElement(intent, tag, {f'{{{ANDROID}}}name': name})
 ET.SubElement(intent, 'data', {f'{{{ANDROID}}}mimeType': 'text/*'})
+application = tree.find('application')
+assert application is not None
+ET.SubElement(tree.getroot(), 'uses-permission', {f'{{{ANDROID}}}name': 'android.permission.INTERNET'})
+ET.SubElement(tree.getroot(), 'uses-permission', {f'{{{ANDROID}}}name': 'android.permission.REQUEST_INSTALL_PACKAGES'})
+provider = ET.SubElement(application, 'provider', {
+    f'{{{ANDROID}}}name': 'androidx.core.content.FileProvider',
+    f'{{{ANDROID}}}authorities': '${applicationId}.bouga.updates',
+    f'{{{ANDROID}}}exported': 'false',
+    f'{{{ANDROID}}}grantUriPermissions': 'true',
+})
+ET.SubElement(provider, 'meta-data', {
+    f'{{{ANDROID}}}name': 'android.support.FILE_PROVIDER_PATHS',
+    f'{{{ANDROID}}}resource': '@xml/bouga_update_paths',
+})
+paths = Path('android/app/src/main/res/xml/bouga_update_paths.xml')
+paths.parent.mkdir(parents=True, exist_ok=True)
+paths.write_text('<paths><cache-path name="bouga_updates" path="bouga_updates/"/></paths>')
 ET.indent(tree, space='    ')
 tree.write(manifest, encoding='utf-8', xml_declaration=True)
 
@@ -24,6 +41,8 @@ assert activity_file.is_file()
 activity_file.write_text('''package com.hafeza.bouga
 
 import android.content.Intent
+import androidx.core.content.FileProvider
+import java.io.File
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -45,6 +64,32 @@ class MainActivity : FlutterActivity() {
                 result.notImplemented()
             }
         }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "bouga/updates")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "installed" -> {
+                        val info = packageManager.getPackageInfo(packageName, 0)
+                        @Suppress("DEPRECATION")
+                        val code = if (android.os.Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
+                        result.success(mapOf("versionCode" to code, "abi" to android.os.Build.SUPPORTED_ABIS.first()))
+                    }
+                    "install" -> {
+                        try {
+                            val file = File(call.argument<String>("path") ?: "").canonicalFile
+                            val allowed = File(cacheDir, "bouga_updates").canonicalFile
+                            require(file.parentFile == allowed && file.extension == "apk" && file.isFile)
+                            val uri = FileProvider.getUriForFile(this, "$packageName.bouga.updates", file)
+                            val install = Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
+                                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            startActivity(install)
+                            result.success(true)
+                        } catch (error: Exception) {
+                            result.error("INSTALL_FAILED", "Android could not open the package installer", null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
         captureShare(intent)
     }
 
