@@ -1,4 +1,5 @@
 import '../../onboarding/presentation/bouga_tour.dart';
+import '../../links/data/link_platform.dart';
 import 'package:flutter/services.dart';
 import '../../settings/data/reminder_service.dart';
 import '../../../core/theme/bouga_motion.dart';
@@ -34,6 +35,8 @@ class _HomePageState extends State<HomePage> {
   BougaLinksRepository? _repo;
   List<Map<String, Object?>> _links = [];
   List<String> _categories = [];
+  String? _platform;
+  List<String> _platforms = [];
   bool _onlyUnopened = false;
   bool _oldestFirst = false;
   int _tab = 0;
@@ -96,7 +99,7 @@ class _HomePageState extends State<HomePage> {
           target: _tourSort,
           title: 'رتّب اللي محفوظ',
           text:
-              'بدّل بين الأحدث والأقدم. وفلتر لسه مفتحتهاش يبيّن الروابط الجديدة غير المفتوحة، مش القديم اللي حالته مجهولة.'
+              'اختار المنصة من الفلتر فوق، ورتّب بالأحدث أو الأقدم. لسه مفتحتهاش للروابط الجديدة غير المفتوحة، مش القديم اللي حالته مجهولة.'
         ),
       (
         target: _tourGroups,
@@ -212,6 +215,9 @@ class _HomePageState extends State<HomePage> {
     }
     final categories = await _repo!.categories();
     final all = await _repo!.list();
+    final platforms = savedPlatforms(all);
+    if (_platform != null && !platforms.contains(_platform)) _platform = null;
+    links = filterPlatform(links, _platform);
     final counts = <String, int>{};
     for (final item in all) {
       final c = item['category']?.toString() ?? '';
@@ -220,6 +226,7 @@ class _HomePageState extends State<HomePage> {
     if (mounted) {
       setState(() {
         _links = links;
+        _platforms = platforms;
         _categories = categories;
         _groupCounts = counts;
       });
@@ -772,9 +779,20 @@ class _HomePageState extends State<HomePage> {
                                                 borderRadius:
                                                     BorderRadius.circular(30),
                                                 borderSide: BorderSide.none))),
+                                    if (_platforms.isNotEmpty) ...[
+                                      const SizedBox(height: 14),
+                                      _PlatformFilter(
+                                          platforms: _platforms,
+                                          selected: _platform,
+                                          onChanged: (value) {
+                                            setState(() => _platform = value);
+                                            _refresh();
+                                          }),
+                                    ],
                                     if (_links.isEmpty &&
                                         _query.isEmpty &&
-                                        !_onlyUnopened) ...[
+                                        !_onlyUnopened &&
+                                        _platform == null) ...[
                                       const SizedBox(height: 66),
                                       Center(
                                           child: Container(
@@ -864,7 +882,8 @@ class _HomePageState extends State<HomePage> {
                                     ],
                                     if (_links.isEmpty &&
                                         _query.isEmpty &&
-                                        !_onlyUnopened)
+                                        !_onlyUnopened &&
+                                        _platform == null)
                                       FilledButton.icon(
                                           key: _tourAdd,
                                           onPressed: _add,
@@ -927,6 +946,7 @@ class _GroupLinksPage extends StatefulWidget {
 class _GroupLinksPageState extends State<_GroupLinksPage> {
   List<Map<String, Object?>> _items = [];
   String _query = '';
+  String? _platform;
   bool _oldestFirst = false;
   bool _loading = true;
   @override
@@ -940,6 +960,9 @@ class _GroupLinksPageState extends State<_GroupLinksPage> {
     if (mounted) {
       setState(() {
         _items = items;
+        if (_platform != null && !savedPlatforms(items).contains(_platform)) {
+          _platform = null;
+        }
         _loading = false;
       });
     }
@@ -947,7 +970,7 @@ class _GroupLinksPageState extends State<_GroupLinksPage> {
 
   @override
   Widget build(BuildContext context) {
-    final items = _items
+    final items = filterPlatform(_items, _platform)
         .where((i) => '${i['title']} ${i['url']} ${i['note']}'
             .toLowerCase()
             .contains(_query.toLowerCase()))
@@ -973,7 +996,7 @@ class _GroupLinksPageState extends State<_GroupLinksPage> {
               : RefreshIndicator(
                   onRefresh: _refresh,
                   child: ListView(padding: const EdgeInsets.all(24), children: [
-                    Text('${_items.length} رابط',
+                    Text('${items.length} من ${_items.length} رابط',
                         style: const TextStyle(color: BougaColors.muted)),
                     const SizedBox(height: 18),
                     TextField(
@@ -982,6 +1005,12 @@ class _GroupLinksPageState extends State<_GroupLinksPage> {
                             hintText: 'دوّر جوه المجموعة',
                             prefixIcon: Icon(Icons.search))),
                     const SizedBox(height: 20),
+                    if (_items.isNotEmpty)
+                      _PlatformFilter(
+                          platforms: savedPlatforms(_items),
+                          selected: _platform,
+                          onChanged: (value) =>
+                              setState(() => _platform = value)),
                     _DateSort(
                         oldestFirst: _oldestFirst,
                         onChanged: (v) {
@@ -989,11 +1018,15 @@ class _GroupLinksPageState extends State<_GroupLinksPage> {
                           _refresh();
                         }),
                     if (items.isEmpty)
-                      const Padding(
-                          padding: EdgeInsets.all(24),
-                          child: Text('مفيش روابط هنا لسه.',
+                      Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                              _items.isEmpty
+                                  ? 'مفيش روابط هنا لسه.'
+                                  : 'مفيش روابط مطابقة.',
                               textAlign: TextAlign.center,
-                              style: TextStyle(color: BougaColors.muted))),
+                              style:
+                                  const TextStyle(color: BougaColors.muted))),
                     ...items.map((item) => SavedLinkCard(
                         item: item,
                         onOpen: () async {
@@ -1031,4 +1064,38 @@ class _DateSort extends StatelessWidget {
             'حسب تاريخ الحفظ المسجّل؛ القديم المستورد حسب تاريخه المتاح.',
             style: TextStyle(fontSize: 11, color: BougaColors.muted)),
       ]);
+}
+
+class _PlatformFilter extends StatelessWidget {
+  const _PlatformFilter(
+      {required this.platforms,
+      required this.selected,
+      required this.onChanged});
+  final List<String> platforms;
+  final String? selected;
+  final ValueChanged<String?> onChanged;
+  @override
+  Widget build(BuildContext context) => Semantics(
+      label: 'تصفية الروابط حسب المنصة',
+      child: InputDecorator(
+        decoration: InputDecoration(
+            labelText: 'المنصة',
+            prefixIcon: const Icon(Icons.public),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(18)),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 6)),
+        child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+          isExpanded: true,
+          value: selected ?? '',
+          items: [
+            const DropdownMenuItem(value: '', child: Text('كل المنصات')),
+            ...platforms.map((platform) => DropdownMenuItem(
+                value: platform,
+                child: Text(platform,
+                    maxLines: 1, overflow: TextOverflow.ellipsis))),
+          ],
+          onChanged: (value) => onChanged(value == '' ? null : value),
+        )),
+      ));
 }
