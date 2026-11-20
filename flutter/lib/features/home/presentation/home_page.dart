@@ -1,3 +1,5 @@
+import 'package:flutter/services.dart';
+import '../../settings/data/reminder_service.dart';
 import '../../../core/theme/bouga_motion.dart';
 import 'dart:convert';
 import 'dart:async';
@@ -39,6 +41,7 @@ class _HomePageState extends State<HomePage> {
   String _category = 'الكل';
   bool _loading = true;
   String? _startupError;
+  DateTime? _lastExitBack;
 
   @override
   void initState() {
@@ -51,6 +54,9 @@ class _HomePageState extends State<HomePage> {
       _db = await BougaDatabase.open();
       _repo = BougaLinksRepository(_db!);
       await _refresh();
+      try {
+        await ReminderService().initialize();
+      } catch (_) {/* Reminder failure never blocks the library. */}
     } catch (error) {
       if (mounted) {
         setState(() => _startupError = error.toString());
@@ -532,186 +538,207 @@ class _HomePageState extends State<HomePage> {
       onEdit: () => _details(item));
 
   @override
-  Widget build(BuildContext context) => Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        appBar: AppBar(
-            toolbarHeight: 88,
-            automaticallyImplyLeading: false,
-            title: Row(children: [
-              ClipRRect(
-                  borderRadius: BorderRadius.circular(15),
-                  child: Image.asset('assets/icon/bouga-icon-source.jpg',
-                      width: 48, height: 48)),
-              const SizedBox(width: 12),
-              const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('بُؤجة',
-                        style: TextStyle(
-                            fontSize: 30,
-                            color: BougaColors.mint,
-                            fontWeight: FontWeight.bold)),
-                    SizedBox(height: 3),
-                    Text('مساحة لأفكارك',
-                        style:
-                            TextStyle(fontSize: 12, color: BougaColors.muted))
-                  ]),
-            ]),
-            actions: [
-              IconButton(
-                  tooltip: 'الإعدادات',
-                  onPressed: _loading
-                      ? null
-                      : () => Navigator.of(context).push(bougaInkRoute<void>(
-                          (_) => SettingsPage(
-                              onImportBackup: _importBackup,
-                              onExportBackup: _exportBackup))),
-                  icon: const Icon(Icons.settings_outlined)),
-              const SizedBox(width: 12)
-            ]),
-        bottomNavigationBar: Container(
-            decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: BougaColors.outline))),
-            child: SafeArea(
-                child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-                    child: Row(children: [
-                      _navItem(0, Icons.grid_view_rounded, 'الرئيسية'),
-                      _navItem(1, Icons.folder_outlined, 'المجموعات'),
-                    ])))),
-        body: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : _startupError != null
-                ? Center(
+  Widget build(BuildContext context) => PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        final now = DateTime.now();
+        if (_lastExitBack != null &&
+            now.difference(_lastExitBack!) < const Duration(seconds: 2)) {
+          SystemNavigator.pop();
+        } else {
+          _lastExitBack = now;
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('اضغط رجوع مرة كمان للخروج'),
+              duration: Duration(seconds: 2)));
+        }
+      },
+      child: Directionality(
+          textDirection: TextDirection.rtl,
+          child: Scaffold(
+            appBar: AppBar(
+                toolbarHeight: 88,
+                automaticallyImplyLeading: false,
+                title: Row(children: [
+                  ClipRRect(
+                      borderRadius: BorderRadius.circular(15),
+                      child: Image.asset('assets/icon/bouga-icon-source.jpg',
+                          width: 48, height: 48)),
+                  const SizedBox(width: 12),
+                  const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('بُؤجة',
+                            style: TextStyle(
+                                fontSize: 30,
+                                color: BougaColors.mint,
+                                fontWeight: FontWeight.bold)),
+                        SizedBox(height: 3),
+                        Text('مساحة لأفكارك',
+                            style: TextStyle(
+                                fontSize: 12, color: BougaColors.muted))
+                      ]),
+                ]),
+                actions: [
+                  IconButton(
+                      tooltip: 'الإعدادات',
+                      onPressed: _loading
+                          ? null
+                          : () => Navigator.of(context).push(
+                              bougaInkRoute<void>((_) => SettingsPage(
+                                  onImportBackup: _importBackup,
+                                  onExportBackup: _exportBackup))),
+                      icon: const Icon(Icons.settings_outlined)),
+                  const SizedBox(width: 12)
+                ]),
+            bottomNavigationBar: Container(
+                decoration: const BoxDecoration(
+                    border:
+                        Border(top: BorderSide(color: BougaColors.outline))),
+                child: SafeArea(
                     child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child:
-                            Text('حصلت مشكلة في فتح بُؤجة:\n$_startupError')))
-                : BougaInkSwitch(
-                    child: RefreshIndicator(
-                        key: ValueKey(_tab),
-                        onRefresh: _refresh,
-                        child: ListView(
-                            padding: const EdgeInsets.fromLTRB(24, 14, 24, 30),
-                            children: [
-                              if (_tab == 1)
-                                _groups()
-                              else ...[
-                                TextField(
-                                    onChanged: (v) {
-                                      _query = v;
-                                      _refresh();
-                                    },
-                                    decoration: InputDecoration(
-                                        hintText: 'بتدور على إيه؟',
-                                        prefixIcon: const Icon(Icons.search),
-                                        contentPadding:
-                                            const EdgeInsets.all(18),
-                                        border: OutlineInputBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(30),
-                                            borderSide: BorderSide.none),
-                                        enabledBorder: OutlineInputBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(30),
-                                            borderSide: BorderSide.none))),
-                                if (_links.isEmpty &&
-                                    _query.isEmpty &&
-                                    !_onlyUnopened) ...[
-                                  const SizedBox(height: 66),
-                                  Center(
-                                      child: Container(
-                                          padding: const EdgeInsets.all(24),
-                                          decoration: BoxDecoration(
-                                              color: BougaColors.mint
-                                                  .withValues(alpha: .12),
-                                              borderRadius:
-                                                  BorderRadius.circular(28)),
-                                          child: const Icon(Icons.link,
-                                              size: 40,
-                                              color: BougaColors.mint))),
-                                  const SizedBox(height: 26),
-                                  const Text('حاجات تستاهل ترجع لها.',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                          fontSize: 27,
-                                          fontWeight: FontWeight.bold)),
-                                  const SizedBox(height: 15),
-                                  const Text(
-                                      'احفظ أول رابط ليك، أو شاركه لبُؤجة من أي تطبيق.',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                          color: BougaColors.muted,
-                                          fontSize: 16,
-                                          height: 1.6)),
-                                  const SizedBox(height: 44),
-                                ] else ...[
-                                  const SizedBox(height: 18),
-                                  FilledButton.icon(
-                                      onPressed: _add,
-                                      icon: const Icon(Icons.add),
-                                      label: const Padding(
-                                          padding: EdgeInsets.all(16),
-                                          child: Text('إضافة رابط',
-                                              style: TextStyle(
-                                                  fontSize: 18,
-                                                  fontWeight:
-                                                      FontWeight.bold)))),
-                                  const SizedBox(height: 20),
-                                  Row(children: [
-                                    const Expanded(
-                                        child: Text('روابطك المحفوظة',
-                                            style: TextStyle(
-                                                fontSize: 21,
-                                                fontWeight: FontWeight.bold))),
-                                    FilterChip(
-                                        label: const Text('لسه مفتحتهاش'),
-                                        selected: _onlyUnopened,
-                                        onSelected: (v) {
-                                          setState(() => _onlyUnopened = v);
+                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                        child: Row(children: [
+                          _navItem(0, Icons.grid_view_rounded, 'الرئيسية'),
+                          _navItem(1, Icons.folder_outlined, 'المجموعات'),
+                        ])))),
+            body: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _startupError != null
+                    ? Center(
+                        child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Text(
+                                'حصلت مشكلة في فتح بُؤجة:\n$_startupError')))
+                    : BougaInkSwitch(
+                        child: RefreshIndicator(
+                            key: ValueKey(_tab),
+                            onRefresh: _refresh,
+                            child: ListView(
+                                padding:
+                                    const EdgeInsets.fromLTRB(24, 14, 24, 30),
+                                children: [
+                                  if (_tab == 1)
+                                    _groups()
+                                  else ...[
+                                    TextField(
+                                        onChanged: (v) {
+                                          _query = v;
                                           _refresh();
-                                        })
-                                  ]),
-                                  _DateSort(
-                                      oldestFirst: _oldestFirst,
-                                      onChanged: (v) {
-                                        setState(() => _oldestFirst = v);
-                                        _refresh();
-                                      }),
-                                  if (_onlyUnopened)
-                                    const Padding(
-                                        padding:
-                                            EdgeInsets.symmetric(vertical: 10),
-                                        child: Text(
-                                            'حالة الروابط الأقدم غير معروفة. التصفية للروابط الجديدة.',
-                                            style: TextStyle(
-                                                color: BougaColors.muted,
-                                                fontSize: 12))),
-                                  if (_links.isEmpty)
-                                    const Padding(
-                                        padding: EdgeInsets.all(24),
-                                        child: Text('مفيش روابط مطابقة.',
-                                            textAlign: TextAlign.center)),
-                                  ..._links.map(_linkRow),
-                                  const SizedBox(height: 20),
-                                ],
-                                if (_links.isEmpty &&
-                                    _query.isEmpty &&
-                                    !_onlyUnopened)
-                                  FilledButton.icon(
-                                      onPressed: _add,
-                                      icon: const Icon(Icons.add),
-                                      label: const Padding(
-                                          padding: EdgeInsets.all(16),
-                                          child: Text('إضافة رابط',
-                                              style: TextStyle(
-                                                  fontSize: 18,
-                                                  fontWeight:
-                                                      FontWeight.bold)))),
-                              ],
-                            ]))),
-      ));
+                                        },
+                                        decoration: InputDecoration(
+                                            hintText: 'بتدور على إيه؟',
+                                            prefixIcon:
+                                                const Icon(Icons.search),
+                                            contentPadding:
+                                                const EdgeInsets.all(18),
+                                            border: OutlineInputBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(30),
+                                                borderSide: BorderSide.none),
+                                            enabledBorder: OutlineInputBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(30),
+                                                borderSide: BorderSide.none))),
+                                    if (_links.isEmpty &&
+                                        _query.isEmpty &&
+                                        !_onlyUnopened) ...[
+                                      const SizedBox(height: 66),
+                                      Center(
+                                          child: Container(
+                                              padding: const EdgeInsets.all(24),
+                                              decoration: BoxDecoration(
+                                                  color: BougaColors.mint
+                                                      .withValues(alpha: .12),
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                          28)),
+                                              child: const Icon(Icons.link,
+                                                  size: 40,
+                                                  color: BougaColors.mint))),
+                                      const SizedBox(height: 26),
+                                      const Text('حاجات تستاهل ترجع لها.',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                              fontSize: 27,
+                                              fontWeight: FontWeight.bold)),
+                                      const SizedBox(height: 15),
+                                      const Text(
+                                          'احفظ أول رابط ليك، أو شاركه لبُؤجة من أي تطبيق.',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                              color: BougaColors.muted,
+                                              fontSize: 16,
+                                              height: 1.6)),
+                                      const SizedBox(height: 44),
+                                    ] else ...[
+                                      const SizedBox(height: 18),
+                                      FilledButton.icon(
+                                          onPressed: _add,
+                                          icon: const Icon(Icons.add),
+                                          label: const Padding(
+                                              padding: EdgeInsets.all(16),
+                                              child: Text('إضافة رابط',
+                                                  style: TextStyle(
+                                                      fontSize: 18,
+                                                      fontWeight:
+                                                          FontWeight.bold)))),
+                                      const SizedBox(height: 20),
+                                      Row(children: [
+                                        const Expanded(
+                                            child: Text('روابطك المحفوظة',
+                                                style: TextStyle(
+                                                    fontSize: 21,
+                                                    fontWeight:
+                                                        FontWeight.bold))),
+                                        FilterChip(
+                                            label: const Text('لسه مفتحتهاش'),
+                                            selected: _onlyUnopened,
+                                            onSelected: (v) {
+                                              setState(() => _onlyUnopened = v);
+                                              _refresh();
+                                            })
+                                      ]),
+                                      _DateSort(
+                                          oldestFirst: _oldestFirst,
+                                          onChanged: (v) {
+                                            setState(() => _oldestFirst = v);
+                                            _refresh();
+                                          }),
+                                      if (_onlyUnopened)
+                                        const Padding(
+                                            padding: EdgeInsets.symmetric(
+                                                vertical: 10),
+                                            child: Text(
+                                                'حالة الروابط الأقدم غير معروفة. التصفية للروابط الجديدة.',
+                                                style: TextStyle(
+                                                    color: BougaColors.muted,
+                                                    fontSize: 12))),
+                                      if (_links.isEmpty)
+                                        const Padding(
+                                            padding: EdgeInsets.all(24),
+                                            child: Text('مفيش روابط مطابقة.',
+                                                textAlign: TextAlign.center)),
+                                      ..._links.map(_linkRow),
+                                      const SizedBox(height: 20),
+                                    ],
+                                    if (_links.isEmpty &&
+                                        _query.isEmpty &&
+                                        !_onlyUnopened)
+                                      FilledButton.icon(
+                                          onPressed: _add,
+                                          icon: const Icon(Icons.add),
+                                          label: const Padding(
+                                              padding: EdgeInsets.all(16),
+                                              child: Text('إضافة رابط',
+                                                  style: TextStyle(
+                                                      fontSize: 18,
+                                                      fontWeight:
+                                                          FontWeight.bold)))),
+                                  ],
+                                ]))),
+          )));
 
   Widget _navItem(int index, IconData icon, String label) => Expanded(
       child: BougaPress(
