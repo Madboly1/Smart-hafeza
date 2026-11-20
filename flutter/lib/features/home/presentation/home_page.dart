@@ -1,5 +1,8 @@
 import 'dart:convert';
 import 'dart:async';
+import 'package:flutter/foundation.dart';
+import '../../links/data/embedded_content.dart';
+import '../../links/presentation/embedded_content_page.dart';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:material_ui/material_ui.dart';
@@ -25,7 +28,9 @@ class _HomePageState extends State<HomePage> {
   BougaDatabase? _db;
   BougaLinksRepository? _repo;
   List<Map<String, Object?>> _links = [];
-  List<String> _categories = ['أخرى'];
+  List<String> _categories = [];
+  bool _onlyUnopened = false;
+  Map<String, int> _groupCounts = {};
   String _query = '';
   String _category = 'الكل';
   bool _loading = true;
@@ -63,12 +68,22 @@ class _HomePageState extends State<HomePage> {
     if (_repo == null) {
       return;
     }
-    final links = await _repo!.list(query: _query, category: _category);
+    var links = await _repo!.list(query: _query, category: _category);
+    if (_onlyUnopened) {
+      links = links.where((item) => item['open_state'] == 'unopened').toList();
+    }
     final categories = await _repo!.categories();
+    final all = await _repo!.list();
+    final counts = <String, int>{};
+    for (final item in all) {
+      final c = item['category']?.toString() ?? '';
+      counts[c] = (counts[c] ?? 0) + 1;
+    }
     if (mounted) {
       setState(() {
         _links = links;
         _categories = categories;
+        _groupCounts = counts;
       });
     }
   }
@@ -166,6 +181,36 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _newGroup() async {
+    var name = '';
+    final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+              title: const Text('مجموعة جديدة'),
+              content: TextField(
+                  onChanged: (value) => name = value,
+                  maxLength: 60,
+                  autofocus: true,
+                  decoration: const InputDecoration(labelText: 'اسم المجموعة')),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(dialogContext, false),
+                    child: const Text('إلغاء')),
+                FilledButton(
+                    onPressed: () {
+                      if (name.trim().isNotEmpty) {
+                        Navigator.pop(dialogContext, true);
+                      }
+                    },
+                    child: const Text('إنشاء'))
+              ],
+            ));
+    if (confirmed == true) {
+      await _db!.addCategory(name);
+      await _refresh();
+    }
+  }
+
   Future<void> _showPendingShares() async {
     if (_shareDialogOpen || !mounted || _repo == null) return;
     _shareDialogOpen = true;
@@ -190,7 +235,8 @@ class _HomePageState extends State<HomePage> {
   Future<void> _add({String? sharedUrl}) async {
     final url = TextEditingController(text: sharedUrl);
     final title = TextEditingController();
-    final category = TextEditingController(text: 'أخرى');
+    final category =
+        TextEditingController(text: _category == 'الكل' ? '' : _category);
     final form = GlobalKey<FormState>();
     final save = await showDialog<bool>(
         context: context,
@@ -216,10 +262,18 @@ class _HomePageState extends State<HomePage> {
                         controller: title,
                         decoration: const InputDecoration(
                             labelText: 'العنوان (اختياري)')),
+                    if (_categories.isNotEmpty)
+                      Wrap(
+                          spacing: 6,
+                          children: _categories
+                              .map((c) => ActionChip(
+                                  label: Text(c),
+                                  onPressed: () => category.text = c))
+                              .toList()),
                     TextField(
                         controller: category,
-                        decoration:
-                            const InputDecoration(labelText: 'التصنيف')),
+                        decoration: const InputDecoration(
+                            labelText: 'المجموعة (اختياري)')),
                   ])),
               actions: [
                 TextButton(
@@ -238,8 +292,7 @@ class _HomePageState extends State<HomePage> {
       final added = await _repo!.add(
           url: url.text,
           title: title.text,
-          category:
-              category.text.trim().isEmpty ? 'أخرى' : category.text.trim(),
+          category: category.text.trim(),
           kind: 'رابط');
       await _refresh();
       if (mounted) {
@@ -281,8 +334,25 @@ class _HomePageState extends State<HomePage> {
                             overflow: TextOverflow.ellipsis),
                         OutlinedButton.icon(
                           onPressed: () async {
-                            final result = await _linkOpener
-                                .open(item['url']?.toString() ?? '');
+                            final rawUrl = item['url']?.toString() ?? '';
+                            final embedded = EmbeddedContent.fromUrl(rawUrl);
+                            if (embedded != null &&
+                                !kIsWeb &&
+                                defaultTargetPlatform ==
+                                    TargetPlatform.android) {
+                              await _db!.markOpened(item['id'].toString());
+                              if (!context.mounted) return;
+                              await Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                      builder: (_) => EmbeddedContentPage(
+                                          content: embedded,
+                                          originalUrl: rawUrl)));
+                              return;
+                            }
+                            final result = await _linkOpener.open(rawUrl);
+                            if (result == LinkOpenResult.opened) {
+                              await _db!.markOpened(item['id'].toString());
+                            }
                             if (!context.mounted) return;
                             final message = switch (result) {
                               LinkOpenResult.opened => null,
@@ -306,8 +376,8 @@ class _HomePageState extends State<HomePage> {
                                 const InputDecoration(labelText: 'العنوان')),
                         TextField(
                             controller: category,
-                            decoration:
-                                const InputDecoration(labelText: 'التصنيف')),
+                            decoration: const InputDecoration(
+                                labelText: 'المجموعة (اختياري)')),
                         TextField(
                             controller: note,
                             maxLines: 3,
@@ -371,17 +441,25 @@ class _HomePageState extends State<HomePage> {
               title: const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('BOUGA',
+                    Text('بُؤجة',
                         style: TextStyle(
                             letterSpacing: 2, fontWeight: FontWeight.w800)),
-                    Text('كل اللي يهمك.. في بُؤجة واحدة.',
+                    Text('روابطك المهمة، في مكان واحد.',
                         style:
                             TextStyle(fontSize: 11, color: BougaColors.muted)),
                   ])),
-          floatingActionButton: FloatingActionButton.extended(
-              onPressed: _loading ? null : _add,
-              icon: const Icon(Icons.add_link),
-              label: const Text('إضافة رابط')),
+          bottomNavigationBar: SafeArea(
+              child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                  child: FilledButton.icon(
+                      onPressed: _loading ? null : _add,
+                      icon: const Icon(Icons.add_link),
+                      label: const Padding(
+                          padding: EdgeInsets.all(14),
+                          child: Text('إضافة رابط',
+                              style: TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.bold)))))),
           body: _loading
               ? const Center(child: CircularProgressIndicator())
               : _startupError != null
@@ -396,12 +474,12 @@ class _HomePageState extends State<HomePage> {
                       child: ListView(
                           padding: const EdgeInsets.all(16),
                           children: [
-                            const Text('مساحتك الخاصة للمحتوى',
+                            const Text('مكتبتك',
                                 style: TextStyle(color: BougaColors.mint)),
                             const SizedBox(height: 8),
-                            const Text('خلي المهم دايمًا في متناول إيدك.',
+                            const Text('احفظ. رتّب. وارجع للمهم.',
                                 style: TextStyle(
-                                    fontSize: 28, fontWeight: FontWeight.bold)),
+                                    fontSize: 21, fontWeight: FontWeight.bold)),
                             const SizedBox(height: 16),
                             TextField(
                                 onChanged: (v) {
@@ -412,18 +490,107 @@ class _HomePageState extends State<HomePage> {
                                     hintText: 'دوّر في بُؤجتك...',
                                     prefixIcon: Icon(Icons.search))),
                             const SizedBox(height: 10),
-                            Wrap(
-                                spacing: 8,
-                                children: ['الكل', ..._categories]
-                                    .map((c) => ChoiceChip(
-                                        label: Text(c),
-                                        selected: _category == c,
-                                        onSelected: (_) {
-                                          setState(() => _category = c);
-                                          _refresh();
-                                        }))
-                                    .toList()),
-                            const SizedBox(height: 12),
+                            Row(children: [
+                              const Text('مجموعاتك',
+                                  style: TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold)),
+                              const Spacer(),
+                              TextButton.icon(
+                                  onPressed: _newGroup,
+                                  icon: const Icon(Icons.add),
+                                  label: const Text('مجموعة جديدة'))
+                            ]),
+                            if (_categories.isEmpty)
+                              const Card(
+                                  child: Padding(
+                                      padding: EdgeInsets.all(22),
+                                      child: Text(
+                                          'مفيش مجموعات لسه. اعمل أول مجموعة بالاسم اللي يناسبك.'))),
+                            if (_categories.isNotEmpty)
+                              LayoutBuilder(
+                                  builder: (context, constraints) => Wrap(
+                                      spacing: 10,
+                                      runSpacing: 10,
+                                      children: _categories
+                                          .map((c) => SizedBox(
+                                              width:
+                                                  (constraints.maxWidth - 10) /
+                                                      2,
+                                              child: Card(
+                                                  child: InkWell(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              18),
+                                                      onTap: () {
+                                                        setState(() =>
+                                                            _category = c);
+                                                        _refresh();
+                                                      },
+                                                      child: Padding(
+                                                          padding:
+                                                              const EdgeInsets
+                                                                  .all(18),
+                                                          child: Column(
+                                                              crossAxisAlignment:
+                                                                  CrossAxisAlignment
+                                                                      .start,
+                                                              children: [
+                                                                Icon(
+                                                                    Icons
+                                                                        .folder_outlined,
+                                                                    color: _category ==
+                                                                            c
+                                                                        ? BougaColors
+                                                                            .gold
+                                                                        : BougaColors
+                                                                            .mint),
+                                                                const SizedBox(
+                                                                    height: 12),
+                                                                Text(c,
+                                                                    style: const TextStyle(
+                                                                        fontWeight:
+                                                                            FontWeight
+                                                                                .bold,
+                                                                        fontSize:
+                                                                            18)),
+                                                                const SizedBox(
+                                                                    height: 4),
+                                                                Text(
+                                                                    '${_groupCounts[c] ?? 0} رابط',
+                                                                    style: const TextStyle(
+                                                                        color: BougaColors
+                                                                            .muted))
+                                                              ]))))))
+                                          .toList())),
+                            Align(
+                                alignment: Alignment.centerRight,
+                                child: TextButton(
+                                    onPressed: () {
+                                      setState(() => _category = 'الكل');
+                                      _refresh();
+                                    },
+                                    child: Text(_category == 'الكل'
+                                        ? 'كل الروابط'
+                                        : 'عرض كل الروابط (المحدد: $_category)'))),
+                            const SizedBox(height: 14),
+                            Card(
+                                child: SwitchListTile(
+                                    title: const Text('لم أفتحها بعد'),
+                                    subtitle: const Text(
+                                        'للروابط الجديدة بعد تفعيل التتبع، حالة الروابط الأقدم غير معروفة.'),
+                                    value: _onlyUnopened,
+                                    onChanged: (value) {
+                                      setState(() => _onlyUnopened = value);
+                                      _refresh();
+                                    })),
+                            const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 10),
+                                child: Text(
+                                    'التذكير لسه غير مفعّل. هنحدد معاده لما تختاره.',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: BougaColors.muted))),
                             Text('المحفوظات: ${_links.length}',
                                 style:
                                     const TextStyle(color: BougaColors.mint)),
@@ -433,7 +600,7 @@ class _HomePageState extends State<HomePage> {
                                   child: Padding(
                                       padding: EdgeInsets.all(24),
                                       child: Text(
-                                          'بُؤجتك لسه فاضية.. احفظ أول رابط مهم عندك.')))
+                                          'ابدأ برابط مهم ليك.\nاضغط «إضافة رابط» أو شاركه لبُؤجة من تطبيق تاني.')))
                             else
                               ..._links.map((item) => Card(
                                       child: ListTile(
