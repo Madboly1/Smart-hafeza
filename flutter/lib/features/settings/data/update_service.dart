@@ -46,10 +46,14 @@ class UpdateManifest {
     final minSupportedVersion = value['minSupportedVersion'];
     final mandatory = value['mandatory'];
 
-    if (versionCode is! int || versionCode < 1 ||
-        versionName is! String || versionName.trim().isEmpty ||
-        releaseMessage is! String || releaseMessage.trim().isEmpty ||
-        apkUrlValue is! String || sha256 is! String ||
+    if (versionCode is! int ||
+        versionCode < 1 ||
+        versionName is! String ||
+        versionName.trim().isEmpty ||
+        releaseMessage is! String ||
+        releaseMessage.trim().isEmpty ||
+        apkUrlValue is! String ||
+        sha256 is! String ||
         !RegExp(r'^[a-fA-F0-9]{64}$').hasMatch(sha256) ||
         (minSupportedVersion != null &&
             (minSupportedVersion is! int || minSupportedVersion < 1)) ||
