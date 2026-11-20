@@ -1,5 +1,5 @@
 name: BOUGA stable signed trial
-# Build approved contextual glass guided tour.
+# Build platform filters and verify in-app updater path.
 
 on:
   push:
