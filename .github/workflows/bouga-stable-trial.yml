@@ -1,5 +1,5 @@
 name: BOUGA stable signed trial
-# Re-run strict checks after CI-toolchain formatting repair.
+# Incoming-share bridge and label repair, strict locally verified checks.
 
 on:
   push:
