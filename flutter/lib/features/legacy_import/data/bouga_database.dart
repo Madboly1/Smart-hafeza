@@ -34,10 +34,20 @@ class BougaDatabase {
         p.join((await getApplicationDocumentsDirectory()).path, databaseName);
     final db = await openDatabase(
       path,
-      version: 1,
+      version: 2,
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute('ALTER TABLE links ADD COLUMN opened_at INTEGER');
+          await db.execute(
+              "ALTER TABLE links ADD COLUMN open_state TEXT NOT NULL DEFAULT 'unknown'");
+        }
+      },
       onCreate: (db, version) async {
         await db.execute(LegacyImportSql.createCategories);
         await db.execute(LegacyImportSql.createLinks);
+        await db.execute('ALTER TABLE links ADD COLUMN opened_at INTEGER');
+        await db.execute(
+            "ALTER TABLE links ADD COLUMN open_state TEXT NOT NULL DEFAULT 'unknown'");
         await db.execute(LegacyImportSql.createImportLog);
         for (final index in LegacyImportSql.indexes) {
           await db.execute(index);
@@ -98,6 +108,16 @@ class BougaDatabase {
           for (final entry in fields.entries)
             if (!known.contains(entry.key)) entry.key: entry.value,
         };
+        final existing = await txn.query('links',
+            columns: ['open_state', 'opened_at'],
+            where: 'id = ?',
+            whereArgs: [link.id],
+            limit: 1);
+        final old = existing.isEmpty ? <String, Object?>{} : existing.first;
+        final state =
+            ['unknown', 'unopened', 'opened'].contains(fields['bougaOpenState'])
+                ? fields['bougaOpenState']
+                : old['open_state'] ?? 'unknown';
         await txn.insert(
           'links',
           {
@@ -111,6 +131,10 @@ class BougaDatabase {
             'note': fields['note']?.toString() ?? '',
             'last_seen': fields['seen'] as int? ?? 0,
             'extra_json': jsonEncode(extra),
+            'open_state': state,
+            'opened_at': fields['bougaOpenedAt'] is int
+                ? fields['bougaOpenedAt']
+                : old['opened_at'],
           },
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
@@ -168,6 +192,8 @@ class BougaDatabase {
           'p': row['progress'],
           'note': row['note'],
           'seen': row['last_seen'],
+          'bougaOpenState': row['open_state'],
+          'bougaOpenedAt': row['opened_at'],
         });
         final category = row['category'] as String;
         if (!categories.contains(category)) categories.add(category);
@@ -224,9 +250,6 @@ class BougaDatabase {
         values.add(value);
       }
     }
-    if (!values.contains('أخرى')) {
-      values.add('أخرى');
-    }
     return values;
   }
 
@@ -257,9 +280,13 @@ class BougaDatabase {
       'note': '',
       'last_seen': DateTime.now().millisecondsSinceEpoch,
       'extra_json': '{}',
+      'open_state': 'unopened',
     });
-    await _database.insert('categories', {'name': category, 'sort_order': 999},
-        conflictAlgorithm: ConflictAlgorithm.ignore);
+    if (category.trim().isNotEmpty) {
+      await _database.insert(
+          'categories', {'name': category, 'sort_order': 999},
+          conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
     return 1;
   }
 
@@ -279,8 +306,31 @@ class BougaDatabase {
         },
         where: 'id = ?',
         whereArgs: [id]);
-    await _database.insert('categories', {'name': category, 'sort_order': 999},
+    if (category.trim().isNotEmpty) {
+      await _database.insert(
+          'categories', {'name': category, 'sort_order': 999},
+          conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
+  }
+
+  Future<void> addCategory(String name) async {
+    final value = name.trim();
+    if (value.isEmpty || value.length > 60) {
+      throw const FormatException('اسم المجموعة من 1 إلى 60 حرف.');
+    }
+    await _database.insert('categories', {'name': value, 'sort_order': 999},
         conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
+  Future<void> markOpened(String id) async {
+    await _database.update(
+        'links',
+        {
+          'open_state': 'opened',
+          'opened_at': DateTime.now().millisecondsSinceEpoch
+        },
+        where: 'id = ?',
+        whereArgs: [id]);
   }
 
   Future<void> deleteLink(String id) =>
