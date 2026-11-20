@@ -70,13 +70,16 @@ jobs:
             echo "Generated AndroidManifest.xml not found" >&2
             exit 1
           fi
-          sed -i 's/android:label="bouga"/android:label="بؤجة تجريبي"/' android/app/src/main/AndroidManifest.xml
-          grep -q 'android:label="بؤجة تجريبي"' android/app/src/main/AndroidManifest.xml
+          sed -i 's/android:label="bouga"/android:label="بؤجة"/' android/app/src/main/AndroidManifest.xml
+          grep -q 'android:label="بؤجة"' android/app/src/main/AndroidManifest.xml
 
           if grep -Eq 'applicationId[[:space:]]*(=)?[[:space:]]*["'\'' ]com\.hafeza\.links["'\'']' android/app/build.gradle*; then
             echo "Production application ID detected; refusing to build." >&2
             exit 1
           fi
+
+      - name: Configure Android incoming text sharing
+        run: python3 tool/configure_incoming_share.py
 
       - name: Install dependencies
         run: flutter pub get
