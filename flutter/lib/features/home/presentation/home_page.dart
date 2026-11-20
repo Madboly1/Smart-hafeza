@@ -348,8 +348,8 @@ class _HomePageState extends State<HomePage> {
                               await _db!.markOpened(item['id'].toString());
                               if (!context.mounted) return;
                               await Navigator.of(context).push(
-                                  MaterialPageRoute<void>(
-                                      builder: (_) => EmbeddedContentPage(
+                                  bougaInkRoute<void>((_) =>
+                                      EmbeddedContentPage(
                                           content: embedded,
                                           originalUrl: rawUrl)));
                               return;
@@ -563,8 +563,8 @@ class _HomePageState extends State<HomePage> {
                   tooltip: 'الإعدادات',
                   onPressed: _loading
                       ? null
-                      : () => Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => SettingsPage(
+                      : () => Navigator.of(context).push(bougaInkRoute<void>(
+                          (_) => SettingsPage(
                               onImportBackup: _importBackup,
                               onExportBackup: _exportBackup))),
                   icon: const Icon(Icons.settings_outlined)),
