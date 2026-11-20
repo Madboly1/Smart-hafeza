@@ -36,10 +36,11 @@ void main() {
     expect(result.manifest?.versionName, '1.1.0');
   });
 
-  test('ignores same and older version codes', () async {
-    for (final code in [1, 0]) {
+  test('ignores same and older valid version codes', () async {
+    for (final code in [2, 1]) {
       final result = await serviceFor(
         {...validManifest, 'versionCode': code},
+        currentVersionCode: 2,
       ).checkForUpdate();
       expect(result.status, UpdateStatus.noUpdate);
     }
@@ -48,6 +49,11 @@ void main() {
   test('treats malformed and incomplete manifests as unavailable', () async {
     final malformed = await serviceFor('not an object').checkForUpdate();
     expect(malformed.status, UpdateStatus.temporarilyUnavailable);
+
+    final zeroVersion = await serviceFor(
+      {...validManifest, 'versionCode': 0},
+    ).checkForUpdate();
+    expect(zeroVersion.status, UpdateStatus.temporarilyUnavailable);
 
     final missingField = Map<String, Object>.from(validManifest)
       ..remove('sha256');
