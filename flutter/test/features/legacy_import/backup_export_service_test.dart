@@ -90,6 +90,12 @@ void main() {
   });
 
   test('saver receives UTF-8 bytes and cancellation is not success', () async {
+    await database.addLink(
+      url: 'https://example.com/arabic',
+      title: 'محتوى عربي',
+      category: 'أخرى',
+      kind: 'رابط',
+    );
     Uint8List? savedBytes;
     final service = BackupExportService(saveFile: (bytes) async {
       savedBytes = bytes;
