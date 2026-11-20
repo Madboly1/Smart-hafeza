@@ -10,7 +10,8 @@ void main() {
         return true;
       });
 
-      expect(await opener.open('https://example.com/path'), LinkOpenResult.opened);
+      expect(
+          await opener.open('https://example.com/path'), LinkOpenResult.opened);
       expect(await opener.open('http://example.com'), LinkOpenResult.opened);
       expect(launched, [
         Uri.parse('https://example.com/path'),
@@ -33,7 +34,8 @@ void main() {
         '/relative/path',
         'not a url',
       ]) {
-        expect(await opener.open(value), LinkOpenResult.invalidUrl, reason: value);
+        expect(await opener.open(value), LinkOpenResult.invalidUrl,
+            reason: value);
       }
       expect(calls, 0);
     });
