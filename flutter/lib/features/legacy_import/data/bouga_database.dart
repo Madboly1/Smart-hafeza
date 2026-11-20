@@ -164,7 +164,9 @@ class BougaDatabase {
     );
     for (final row in linkRows) {
       final value = row['category'] as String?;
-      if (value != null && value.isNotEmpty && !values.contains(value)) values.add(value);
+      if (value != null && value.isNotEmpty && !values.contains(value)) {
+        values.add(value);
+      }
     }
     if (!values.contains('أخرى')) values.add('أخرى');
     return values;

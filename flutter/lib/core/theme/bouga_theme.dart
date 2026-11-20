@@ -1,10 +1,10 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'bouga_tokens.dart';
 
 abstract final class BougaTheme {
   static ThemeData get dark {
-    final scheme = const ColorScheme.dark(
+    const scheme = ColorScheme.dark(
       primary: BougaColors.mint,
       secondary: BougaColors.gold,
       surface: BougaColors.surface,

@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../../../core/theme/bouga_tokens.dart';
 import '../../legacy_import/data/bouga_database.dart';
 import '../../links/data/bouga_links_repository.dart';
@@ -32,17 +32,28 @@ class _HomePageState extends State<HomePage> {
       _repo = BougaLinksRepository(_db!);
       await _refresh();
     } catch (error) {
-      if (mounted) setState(() => _startupError = error.toString());
+      if (mounted) {
+        setState(() => _startupError = error.toString());
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
 
   Future<void> _refresh() async {
-    if (_repo == null) return;
+    if (_repo == null) {
+      return;
+    }
     final links = await _repo!.list(query: _query, category: _category);
     final categories = await _repo!.categories();
-    if (mounted) setState(() { _links = links; _categories = categories; });
+    if (mounted) {
+      setState(() {
+        _links = links;
+        _categories = categories;
+      });
+    }
   }
 
   @override
@@ -55,11 +66,17 @@ class _HomePageState extends State<HomePage> {
         allowedExtensions: ['json'],
         withData: true,
       );
-      if (picked == null || picked.files.isEmpty) return;
+      if (picked == null || picked.files.isEmpty) {
+        return;
+      }
       final bytes = picked.files.single.bytes;
-      if (bytes == null) throw const FormatException('تعذر قراءة ملف النسخة الاحتياطية.');
+      if (bytes == null) {
+        throw const FormatException('تعذر قراءة ملف النسخة الاحتياطية.');
+      }
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
@@ -81,7 +98,9 @@ class _HomePageState extends State<HomePage> {
           ],
         ),
       );
-      if (confirmed != true) return;
+      if (confirmed != true) {
+        return;
+      }
 
       final report = await _db!.importLegacyJson(utf8.decode(bytes));
       await _refresh();
@@ -91,13 +110,17 @@ class _HomePageState extends State<HomePage> {
           : 'تم استيراد ${report.linkCount} رابط و${report.categoryCount} تصنيف بنجاح.';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     } on FormatException catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('ملف النسخة الاحتياطية غير صالح: ${error.message}')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('ملف النسخة الاحتياطية غير صالح: ${error.message}')),
+        );
+      }
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر استيراد النسخة الاحتياطية: $error')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذر استيراد النسخة الاحتياطية: $error')),
+        );
+      }
     }
   }
 
@@ -124,7 +147,11 @@ class _HomePageState extends State<HomePage> {
     if (save == true) {
       final added = await _repo!.add(url: url.text, title: title.text, category: category.text.trim().isEmpty ? 'أخرى' : category.text.trim(), kind: 'رابط');
       await _refresh();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(added == 0 ? 'الرابط محفوظ بالفعل' : 'اتحفظ في بُؤجة')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(added == 0 ? 'الرابط محفوظ بالفعل' : 'اتحفظ في بُؤجة')),
+        );
+      }
     }
     url.dispose(); title.dispose(); category.dispose();
   }
@@ -143,16 +170,20 @@ class _HomePageState extends State<HomePage> {
           TextField(controller: title, decoration: const InputDecoration(labelText: 'العنوان')),
           TextField(controller: category, decoration: const InputDecoration(labelText: 'التصنيف')),
           TextField(controller: note, maxLines: 3, decoration: const InputDecoration(labelText: 'ملاحظات')),
-          Text('التقدم: ' + progress.toString() + '%'),
+          Text('التقدم: $progress%'),
           Slider(value: progress.toDouble(), min: 0, max: 100, divisions: 20, onChanged: (v) => modalSet(() => progress = v.round())),
           FilledButton(onPressed: () async {
             await _repo!.update(id: id, title: title.text, category: category.text.trim().isEmpty ? 'أخرى' : category.text.trim(), note: note.text, progress: progress);
-            if (context.mounted) Navigator.pop(context, false);
+            if (context.mounted) {
+              Navigator.pop(context, false);
+            }
           }, child: const Text('حفظ التعديلات')),
           TextButton.icon(onPressed: () => Navigator.pop(context, true), icon: const Icon(Icons.delete_outline, color: BougaColors.danger), label: const Text('حذف الرابط')),
         ])),
       )));
-    if (remove == true) await _repo!.delete(id);
+    if (remove == true) {
+      await _repo!.delete(id);
+    }
     await _refresh();
     title.dispose(); category.dispose(); note.dispose();
   }
@@ -175,7 +206,7 @@ class _HomePageState extends State<HomePage> {
         const SizedBox(height: 10),
         Wrap(spacing: 8, children: ['الكل', ..._categories].map((c) => ChoiceChip(label: Text(c), selected: _category == c, onSelected: (_) { setState(() => _category = c); _refresh(); })).toList()),
         const SizedBox(height: 12),
-        Text('المحفوظات: ' + _links.length.toString(), style: const TextStyle(color: BougaColors.mint)),
+        Text('المحفوظات: ${_links.length}', style: const TextStyle(color: BougaColors.mint)),
         const SizedBox(height: 8),
         if (_links.isEmpty) const Card(child: Padding(padding: EdgeInsets.all(24), child: Text('بُؤجتك لسه فاضية.. احفظ أول رابط مهم عندك.')))
         else ..._links.map((item) => Card(child: ListTile(
@@ -183,7 +214,7 @@ class _HomePageState extends State<HomePage> {
           leading: const CircleAvatar(child: Icon(Icons.link)),
           title: Text((item['title']?.toString().trim().isNotEmpty ?? false) ? item['title'].toString() : item['url'].toString(), maxLines: 2, overflow: TextOverflow.ellipsis),
           subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(item['category'].toString() + ' • ' + item['kind'].toString()),
+            Text('${item['category']} • ${item['kind']}'),
             const SizedBox(height: 6),
             LinearProgressIndicator(value: ((item['progress'] as int? ?? 0).clamp(0, 100)) / 100),
           ]),
