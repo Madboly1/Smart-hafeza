@@ -46,7 +46,7 @@ jobs:
             exit 1
           fi
       - name: Set production Android identity
-        if: inputs.trial != true
+        if: inputs.trial != true && !contains(github.event.head_commit.message, '[trial]')
         shell: bash
         run: |
           if [ -f android/app/build.gradle.kts ]; then
@@ -67,7 +67,7 @@ jobs:
             exit 1
           fi
       - name: Set trial Android identity
-        if: inputs.trial == true
+        if: inputs.trial == true || contains(github.event.head_commit.message, '[trial]')
         shell: bash
         run: |
           if [ -f android/app/build.gradle.kts ]; then
