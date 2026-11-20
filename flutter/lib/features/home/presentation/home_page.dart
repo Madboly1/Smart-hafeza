@@ -1,3 +1,4 @@
+import '../../onboarding/presentation/bouga_tour.dart';
 import 'package:flutter/services.dart';
 import '../../settings/data/reminder_service.dart';
 import '../../../core/theme/bouga_motion.dart';
@@ -42,6 +43,129 @@ class _HomePageState extends State<HomePage> {
   bool _loading = true;
   String? _startupError;
   DateTime? _lastExitBack;
+  final _tourSearch = GlobalKey();
+  final _tourAdd = GlobalKey();
+  final _tourGroups = GlobalKey();
+  final _tourNewGroup = GlobalKey();
+  final _tourSettings = GlobalKey();
+  final _tourLink = GlobalKey();
+  final _tourSort = GlobalKey();
+  bool _tourRunning = false;
+
+  Future<void> _maybeTour() async {
+    try {
+      if (!await BougaTourStore().seen &&
+          mounted &&
+          _pendingShares.isEmpty &&
+          !_shareDialogOpen) {
+        await _runTour();
+      }
+    } catch (_) {
+      /* Missing local onboarding state must never block the library. */
+    }
+  }
+
+  Future<void> _runTour() async {
+    if (!mounted || _tourRunning || _loading) return;
+    _tourRunning = true;
+    final previousTab = _tab;
+    setState(() => _tab = 0);
+    await WidgetsBinding.instance.endOfFrame;
+    // Fixed real targets only. No sample links/groups are created for a tour.
+    final steps = <({GlobalKey target, String title, String text})>[
+      (
+        target: _tourAdd,
+        title: 'احفظ أول فكرة',
+        text:
+            'من إضافة رابط تحفظ العنوان وتختار المجموعة. ومن أي تطبيق تقدر تشارك الرابط لبؤجة كمان.'
+      ),
+      (
+        target: _tourSearch,
+        title: 'ارجع للي يهمك',
+        text: 'دوّر بالعنوان أو الرابط أو الملاحظات من هنا.'
+      ),
+      if (_links.isNotEmpty)
+        (
+          target: _tourLink,
+          title: 'الكارت بيفتح المحتوى',
+          text:
+              'اضغط على الرابط لفتحه جوّه بؤجة حسب دعم الموقع. الثلاث نقط للتعديل والملاحظات والحذف، ويوتيوب بيظهر بمعاينة لو متاحة.'
+        ),
+      if (_links.isNotEmpty)
+        (
+          target: _tourSort,
+          title: 'رتّب اللي محفوظ',
+          text:
+              'بدّل بين الأحدث والأقدم. وفلتر لسه مفتحتهاش يبيّن الروابط الجديدة غير المفتوحة، مش القديم اللي حالته مجهولة.'
+        ),
+      (
+        target: _tourGroups,
+        title: 'كل حاجة في مكانها',
+        text:
+            'من المجموعات تنظّم الروابط حسب اهتماماتك. الأسماء إنت اللي بتختارها، مفيش مجموعات جاهزة مفروضة عليك.'
+      ),
+    ];
+    var proceed = true;
+    var index = 0;
+    final total = steps.length + 5;
+    for (final step in steps) {
+      if (!mounted) {
+        proceed = false;
+        break;
+      }
+      proceed = await showBougaTourStep(context,
+          target: step.target,
+          title: step.title,
+          text: step.text,
+          step: ++index,
+          total: total);
+      if (!proceed) break;
+    }
+    if (proceed && mounted) {
+      setState(() => _tab = 1);
+      await Future<void>.delayed(MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 450));
+      if (mounted) {
+        proceed = await showBougaTourStep(context,
+            target: _tourNewGroup,
+            title: 'مجموعة على مزاجك',
+            text:
+                'أنشئ مجموعة بالاسم اللي يعجبك، وبعدها افتحها لإضافة الروابط أو البحث جوّاها.',
+            step: ++index,
+            total: total);
+      }
+    }
+    if (proceed && mounted) {
+      proceed = await showBougaTourStep(context,
+          target: _tourSettings,
+          title: 'باقي الأدوات هنا',
+          text:
+              'الإعدادات فيها التذكير والنسخ الاحتياطي والتحديث، وتقدر تعيد الجولة في أي وقت.',
+          step: ++index,
+          total: total);
+    }
+    if (proceed && mounted) {
+      await Navigator.of(context).push(bougaInkRoute<void>((_) => SettingsPage(
+          onImportBackup: _importBackup,
+          onExportBackup: _exportBackup,
+          tourStart: index,
+          tourTotal: total,
+          onReplayTour: _replayTour)));
+    }
+    try {
+      await BougaTourStore().complete();
+    } catch (_) {/* Retry next launch if persistence is unavailable. */}
+    if (mounted) setState(() => _tab = previousTab);
+    _tourRunning = false;
+    if (mounted) unawaited(_showPendingShares());
+  }
+
+  Future<void> _replayTour() async {
+    Navigator.of(context).pop();
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    if (mounted) await _runTour();
+  }
 
   @override
   void initState() {
@@ -65,6 +189,9 @@ class _HomePageState extends State<HomePage> {
       if (mounted) {
         setState(() => _loading = false);
         if (_repo != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) unawaited(_maybeTour());
+          });
           unawaited(_incomingShare.start((text) {
             _pendingShares.add(text);
             unawaited(_showPendingShares());
@@ -223,7 +350,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _showPendingShares() async {
-    if (_shareDialogOpen || !mounted || _repo == null) return;
+    if (_tourRunning || _shareDialogOpen || !mounted || _repo == null) return;
     _shareDialogOpen = true;
     try {
       while (mounted && _pendingShares.isNotEmpty) {
@@ -499,6 +626,7 @@ class _HomePageState extends State<HomePage> {
                                   textDirection: TextDirection.ltr),
                             ]))))))),
         OutlinedButton.icon(
+            key: _tourNewGroup,
             onPressed: _newGroup,
             icon: const Icon(Icons.add),
             label: const Padding(
@@ -582,13 +710,15 @@ class _HomePageState extends State<HomePage> {
                 ]),
                 actions: [
                   IconButton(
+                      key: _tourSettings,
                       tooltip: 'الإعدادات',
                       onPressed: _loading
                           ? null
                           : () => Navigator.of(context).push(
                               bougaInkRoute<void>((_) => SettingsPage(
                                   onImportBackup: _importBackup,
-                                  onExportBackup: _exportBackup))),
+                                  onExportBackup: _exportBackup,
+                                  onReplayTour: _replayTour))),
                       icon: const Icon(Icons.settings_outlined)),
                   const SizedBox(width: 12)
                 ]),
@@ -623,6 +753,7 @@ class _HomePageState extends State<HomePage> {
                                     _groups()
                                   else ...[
                                     TextField(
+                                        key: _tourSearch,
                                         onChanged: (v) {
                                           _query = v;
                                           _refresh();
@@ -675,6 +806,7 @@ class _HomePageState extends State<HomePage> {
                                     ] else ...[
                                       const SizedBox(height: 18),
                                       FilledButton.icon(
+                                          key: _tourAdd,
                                           onPressed: _add,
                                           icon: const Icon(Icons.add),
                                           label: const Padding(
@@ -700,12 +832,15 @@ class _HomePageState extends State<HomePage> {
                                               _refresh();
                                             })
                                       ]),
-                                      _DateSort(
-                                          oldestFirst: _oldestFirst,
-                                          onChanged: (v) {
-                                            setState(() => _oldestFirst = v);
-                                            _refresh();
-                                          }),
+                                      KeyedSubtree(
+                                          key: _tourSort,
+                                          child: _DateSort(
+                                              oldestFirst: _oldestFirst,
+                                              onChanged: (v) {
+                                                setState(
+                                                    () => _oldestFirst = v);
+                                                _refresh();
+                                              })),
                                       if (_onlyUnopened)
                                         const Padding(
                                             padding: EdgeInsets.symmetric(
@@ -720,13 +855,18 @@ class _HomePageState extends State<HomePage> {
                                             padding: EdgeInsets.all(24),
                                             child: Text('مفيش روابط مطابقة.',
                                                 textAlign: TextAlign.center)),
-                                      ..._links.map(_linkRow),
+                                      ..._links.indexed.map((row) => row.$1 == 0
+                                          ? KeyedSubtree(
+                                              key: _tourLink,
+                                              child: _linkRow(row.$2))
+                                          : _linkRow(row.$2)),
                                       const SizedBox(height: 20),
                                     ],
                                     if (_links.isEmpty &&
                                         _query.isEmpty &&
                                         !_onlyUnopened)
                                       FilledButton.icon(
+                                          key: _tourAdd,
                                           onPressed: _add,
                                           icon: const Icon(Icons.add),
                                           label: const Padding(
@@ -742,6 +882,7 @@ class _HomePageState extends State<HomePage> {
 
   Widget _navItem(int index, IconData icon, String label) => Expanded(
       child: BougaPress(
+          key: index == 1 ? _tourGroups : null,
           child: TextButton(
               onPressed: () {
                 setState(() {
