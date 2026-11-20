@@ -104,7 +104,9 @@ class _HomePageState extends State<HomePage> {
 
       final report = await _db!.importLegacyJson(utf8.decode(bytes));
       await _refresh();
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       final message = report.skippedAsDuplicate
           ? 'النسخة دي مستوردة بالفعل، مفيش حاجة اتكررت.'
           : 'تم استيراد ${report.linkCount} رابط و${report.categoryCount} تصنيف بنجاح.';

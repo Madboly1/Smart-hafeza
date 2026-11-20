@@ -168,7 +168,9 @@ class BougaDatabase {
         values.add(value);
       }
     }
-    if (!values.contains('أخرى')) values.add('أخرى');
+    if (!values.contains('أخرى')) {
+      values.add('أخرى');
+    }
     return values;
   }
 
@@ -178,7 +180,9 @@ class BougaDatabase {
   Future<int> addLink({required String url, required String title, required String category, required String kind}) async {
     final normalized = url.trim();
     final existing = await _database.query('links', where: 'url = ?', whereArgs: [normalized], limit: 1);
-    if (existing.isNotEmpty) return 0;
+    if (existing.isNotEmpty) {
+      return 0;
+    }
     final id = DateTime.now().microsecondsSinceEpoch.toString();
     await _database.insert('links', {
       'id': id, 'url': normalized, 'title': title.trim(), 'category': category,
