@@ -1,11 +1,110 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/bouga_tokens.dart';
+import '../data/update_service.dart';
 
-class SettingsPage extends StatelessWidget {
+class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key, required this.onImportBackup});
 
   final Future<void> Function() onImportBackup;
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  UpdateStatus? _updateStatus;
+  bool _checkingUpdates = false;
+
+  Future<void> _checkForUpdates() async {
+    if (_checkingUpdates) return;
+    setState(() {
+      _checkingUpdates = true;
+      _updateStatus = null;
+    });
+
+    final result = await UpdateService().checkForUpdate();
+    if (!mounted) return;
+    setState(() {
+      _checkingUpdates = false;
+      _updateStatus = result.status;
+    });
+
+    switch (result.status) {
+      case UpdateStatus.noUpdate:
+        _showMessage('التطبيق مُحدّث بالفعل، مفيش تحديث جديد.');
+        break;
+      case UpdateStatus.temporarilyUnavailable:
+        _showMessage('تعذر التحقق من التحديثات مؤقتًا. جرّب تاني بعد شوية.');
+        break;
+      case UpdateStatus.updateAvailable:
+        await _showUpdateDialog(result.manifest!);
+        break;
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  Future<void> _showUpdateDialog(UpdateManifest manifest) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Row(
+          children: [
+            const Expanded(child: Text('تحديث جديد متاح')),
+            if (manifest.mandatory)
+              const Chip(
+                label: Text('تحديث مطلوب'),
+                visualDensity: VisualDensity.compact,
+              ),
+          ],
+        ),
+        content: Text(
+          'الإصدار ${manifest.versionName}\n\n'
+          '${manifest.releaseMessage}'
+          '${manifest.mandatory ? '\n\nسبب إلزامية التحديث: ${manifest.releaseMessage}' : ''}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('لاحقًا'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              final opened = await launchUrl(
+                manifest.apkUrl,
+                mode: LaunchMode.externalApplication,
+              );
+              if (!opened && mounted) {
+                _showMessage('تعذر فتح رابط التحديث. حاول مرة أخرى.');
+              }
+            },
+            child: const Text('تحديث الآن'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String get _updateSubtitle {
+    if (_checkingUpdates) return 'جارٍ التحقق من التحديثات...';
+    switch (_updateStatus) {
+      case UpdateStatus.noUpdate:
+        return 'لا يوجد تحديث جديد.';
+      case UpdateStatus.updateAvailable:
+        return 'يوجد تحديث جديد متاح.';
+      case UpdateStatus.temporarilyUnavailable:
+        return 'تعذر التحقق مؤقتًا. التطبيق يعمل بشكل طبيعي.';
+      case null:
+        return 'تحقق من توفر إصدار أحدث للتطبيق.';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,21 +126,26 @@ class SettingsPage extends StatelessWidget {
                   'استرجع روابطك وتصنيفاتك من ملف نسخة بُؤجة.',
                 ),
                 trailing: const Icon(Icons.chevron_left),
-                onTap: onImportBackup,
+                onTap: widget.onImportBackup,
               ),
             ),
             const SizedBox(height: 24),
             const _SectionTitle('التحديثات'),
-            const Card(
+            Card(
               child: ListTile(
-                leading: CircleAvatar(
+                leading: const CircleAvatar(
                   child: Icon(Icons.system_update_alt),
                 ),
-                title: Text('تحديث التطبيق'),
-                subtitle: Text(
-                  'قناة التحديثات التلقائية قيد التجهيز. '
-                  'لن يتم تثبيت أي تحديث دون موافقتك.',
-                ),
+                title: const Text('تحديث التطبيق'),
+                subtitle: Text(_updateSubtitle),
+                trailing: _checkingUpdates
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.chevron_left),
+                onTap: _checkingUpdates ? null : _checkForUpdates,
               ),
             ),
             const SizedBox(height: 24),
