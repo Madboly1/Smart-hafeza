@@ -1,3 +1,4 @@
+import '../../onboarding/presentation/bouga_tour.dart';
 import '../data/reminder_service.dart';
 import 'dart:async';
 import 'package:material_ui/material_ui.dart';
@@ -8,10 +9,18 @@ import '../data/update_service.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage(
-      {super.key, required this.onImportBackup, required this.onExportBackup});
+      {super.key,
+      required this.onImportBackup,
+      required this.onExportBackup,
+      this.onReplayTour,
+      this.tourStart,
+      this.tourTotal});
 
   final Future<void> Function() onImportBackup;
   final Future<void> Function() onExportBackup;
+  final Future<void> Function()? onReplayTour;
+  final int? tourStart;
+  final int? tourTotal;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -19,12 +28,56 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   final _reminders = ReminderService();
+  final _tourReminders = GlobalKey();
+  final _tourBackup = GlobalKey();
+  final _tourUpdate = GlobalKey();
+  Future<void> _runSettingsTour() async {
+    var index = widget.tourStart!;
+    final steps = [
+      (
+        target: _tourReminders,
+        title: 'فكّر نفسك باللي محفوظ',
+        text:
+            'التذكير للروابط اللي لسه ما اتفتحتش. تقدر تغيّر عدد الأيام أو تقفله، ولازم تسمح بالإشعارات. أندرويد ممكن يأخره حسب البطارية.'
+      ),
+      (
+        target: _tourBackup,
+        title: 'خلي معاك نسخة',
+        text:
+            'صدّر ملف JSON تحفظه في مكان آمن، أو استورد نسخة عندك. ده ملف محلي، مش نسخ تلقائي على جوجل.'
+      ),
+      (
+        target: _tourUpdate,
+        title: 'التحديث من هنا',
+        text:
+            'تحقّق من إصدار جديد وثبّته فوق النسخة المنفصلة من غير مسحها. خلصنا، وتقدر تعيد الجولة من إعدادات بؤجة.'
+      ),
+    ];
+    for (final step in steps) {
+      if (!mounted) return;
+      final next = await showBougaTourStep(context,
+          target: step.target,
+          title: step.title,
+          text: step.text,
+          step: ++index,
+          total: widget.tourTotal!,
+          last: index == widget.tourTotal);
+      if (!next) break;
+    }
+    if (mounted) Navigator.of(context).pop();
+  }
+
   ReminderSettings _reminderSettings = const ReminderSettings();
   bool _savingReminders = false;
   @override
   void initState() {
     super.initState();
     _loadReminders();
+    if (widget.tourStart != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _runSettingsTour();
+      });
+    }
   }
 
   Future<void> _loadReminders() async {
@@ -187,6 +240,13 @@ class _SettingsPageState extends State<SettingsPage> {
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            if (widget.onReplayTour != null)
+              Card(
+                  child: ListTile(
+                      leading: const Icon(Icons.explore_outlined,
+                          color: BougaColors.gold),
+                      title: const Text('إعادة جولة الشرح'),
+                      onTap: () => widget.onReplayTour!())),
             const _SectionTitle('تذكير الروابط'),
             Card(
                 child: Padding(
@@ -195,6 +255,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           SwitchListTile(
+                              key: _tourReminders,
                               contentPadding: EdgeInsets.zero,
                               title: const Text('فكّرني باللي لسه ما اتفتحش'),
                               value: _reminderSettings.enabled,
@@ -235,6 +296,7 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 24),
             const _SectionTitle('النسخ الاحتياطي'),
             Card(
+              key: _tourBackup,
               child: Column(
                 children: [
                   ListTile(
@@ -268,6 +330,7 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 24),
             const _SectionTitle('التحديثات'),
             Card(
+              key: _tourUpdate,
               child: ListTile(
                 leading: const CircleAvatar(
                   child: Icon(Icons.system_update_alt),
