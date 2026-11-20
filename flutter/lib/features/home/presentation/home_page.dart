@@ -143,7 +143,11 @@ class _HomePageState extends State<HomePage> {
       ])),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
-        FilledButton(onPressed: () { if (form.currentState!.validate()) Navigator.pop(context, true); }, child: const Text('حفظ')),
+        FilledButton(onPressed: () {
+          if (form.currentState!.validate()) {
+            Navigator.pop(context, true);
+          }
+        }, child: const Text('حفظ')),
       ],
     ));
     if (save == true) {
