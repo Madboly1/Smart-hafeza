@@ -20,7 +20,8 @@ void main() {
 
   tearDown(() async => database.close());
 
-  test('exports importer-compatible envelope and round-trips all link fields', () async {
+  test('exports importer-compatible envelope and round-trips all link fields',
+      () async {
     await database.importLegacyJson(jsonEncode({
       'schemaVersion': 1,
       'data': {
@@ -79,8 +80,8 @@ void main() {
   });
 
   test('exports an empty database as a valid empty envelope', () async {
-    final envelope = jsonDecode(await database.exportLegacyJson())
-        as Map<String, dynamic>;
+    final envelope =
+        jsonDecode(await database.exportLegacyJson()) as Map<String, dynamic>;
     final data = envelope['data'] as Map<String, dynamic>;
     expect(data['links'], isEmpty);
     expect(data['cats'], isEmpty);
