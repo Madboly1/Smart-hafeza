@@ -1,6 +1,9 @@
 name: BOUGA stable signed trial
 
 on:
+  push:
+    branches: [migration/flutter-foundation]
+    paths: [.github/workflows/bouga-stable-trial.yml]
   workflow_dispatch:
 
 permissions:
@@ -100,7 +103,6 @@ jobs:
           test -s "$KEYSTORE_PATH"
           openssl pkcs12 -in "$KEYSTORE_PATH" -passin env:BOUGA_SIGNING_PASSWORD -noout
           printf 'BOUGA_KEYSTORE_PATH=%s\n' "$KEYSTORE_PATH" >> "$GITHUB_ENV"
-          rm -f "$KEYSTORE_PATH"
           trap - EXIT
 
       - name: Configure mandatory trial release signing
