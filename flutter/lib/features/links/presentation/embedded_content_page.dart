@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../data/embedded_content.dart';
@@ -14,15 +15,25 @@ class EmbeddedContentPage extends StatefulWidget {
 
 class _EmbeddedContentPageState extends State<EmbeddedContentPage> {
   late final WebViewController _controller;
+  Timer? _timeout;
   bool _loading = true;
   bool _failed = false;
   @override
   void initState() {
     super.initState();
+    _timeout = Timer(const Duration(seconds: 20), () {
+      if (mounted && _loading) {
+        setState(() {
+          _loading = false;
+          _failed = true;
+        });
+      }
+    });
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(NavigationDelegate(
         onPageFinished: (_) {
+          _timeout?.cancel();
           if (mounted) setState(() => _loading = false);
         },
         onWebResourceError: (error) {
@@ -35,11 +46,12 @@ class _EmbeddedContentPageState extends State<EmbeddedContentPage> {
         },
         onNavigationRequest: (request) {
           final uri = Uri.tryParse(request.url);
-          if (uri == null || uri.scheme != 'https') {
+          if (uri == null || uri.scheme != 'https' || uri.userInfo.isNotEmpty) {
             return NavigationDecision.prevent;
           }
           final h = uri.host;
-          if (h == 'www.youtube.com' ||
+          if (h == Uri.parse(widget.originalUrl).host ||
+              h == 'www.youtube.com' ||
               h == 'www.facebook.com' ||
               h.endsWith('.youtube.com') ||
               h.endsWith('.facebook.com')) {
@@ -56,6 +68,12 @@ class _EmbeddedContentPageState extends State<EmbeddedContentPage> {
   }
 
   @override
+  void dispose() {
+    _timeout?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) => Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
@@ -64,7 +82,7 @@ class _EmbeddedContentPageState extends State<EmbeddedContentPage> {
           Container(
               padding: const EdgeInsets.all(12),
               child: const Text(
-                  'العرض حسب سماح صاحب المحتوى والمنصة. المحتوى الخاص أو الممنوع من التضمين مش هيظهر هنا. مش محتاج تدخل كلمة مرورك في بؤجة.',
+                  'العرض حسب سماح الموقع. لو الصفحة مش ظاهرة افتحها من الزر تحت. ماتدخلش كلمة مرورك هنا.',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 12))),
           if (_loading) const LinearProgressIndicator(),
