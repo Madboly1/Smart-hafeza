@@ -16,7 +16,9 @@ for abi in ['arm64-v8a','armeabi-v7a','x86_64']:
  metadata=subprocess.check_output([str(bin/'aapt'),'dump','badging',str(apk)],text=True)
  assert "name='com.hafeza.links.trial'" in metadata
  code=int(re.search(r"versionCode='(\d+)'",metadata)[1])
- assert code>5002
+ offset={"armeabi-v7a":1000,"arm64-v8a":2000,"x86_64":4000}[abi]
+ assert code == 3000 + int(os.environ["GITHUB_RUN_NUMBER"]) + offset
+ assert code > 3002 + offset
  manifest={
  'versionCode':code,'versionName':f'1.0.{os.environ["GITHUB_RUN_NUMBER"]}',
  'releaseMessage':'إصلاح استقبال الروابط من التطبيقات الأخرى، والاسم الظاهر بُؤجة، ونظام تنزيل التحديثات والتحقق من سلامتها.',
