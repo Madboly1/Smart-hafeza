@@ -24,6 +24,13 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^5.0.0
   sqflite_common_ffi: ^2.3.4
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
+
+flutter_launcher_icons:
+  android: true
+  image_path: "assets/icon/bouga-icon-source.jpg"
+  adaptive_icon_background: "#022A36"
+  adaptive_icon_foreground: "assets/icon/bouga-icon-source.jpg"

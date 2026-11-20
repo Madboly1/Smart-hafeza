@@ -29,6 +29,8 @@ jobs:
           cache: true
       - name: Generate platform runners
         run: flutter create --platforms=android,windows,web --org com.hafeza --project-name bouga .
+      - name: Generate launcher icons
+        run: dart run flutter_launcher_icons
       - name: Configure Android compile SDK
         shell: bash
         run: |
