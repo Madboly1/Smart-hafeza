@@ -1,5 +1,5 @@
 name: BOUGA stable signed trial
-# Verify ABI-specific monotonic version codes before publishing updates.
+# Build adopted empty-first groups and supported embedded viewer.
 
 on:
   push:
@@ -23,7 +23,7 @@ jobs:
       - name: Checkout selected trial branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.sha }}
 
       - name: Fail closed when signing secrets are unavailable
         shell: bash
@@ -195,7 +195,7 @@ jobs:
         run: |
           set -euo pipefail
           TAG="bouga-isolated-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" build/app/outputs/flutter-apk/app-*-release.apk build/app/outputs/flutter-apk/update-*.json --repo Madboly1/Smart-hafeza --target "$GITHUB_SHA" --title "بُؤجة المنفصل 1.0.${GITHUB_RUN_NUMBER}" --notes "تحديث للنسخة المنفصلة فقط (com.hafeza.links.trial). لا يستبدل بؤجة القديم. إصلاح المشاركة والتحديثات، مع الحفاظ على بيانات النسخة المنفصلة."
+          gh release create "$TAG" build/app/outputs/flutter-apk/app-*-release.apk build/app/outputs/flutter-apk/update-*.json --repo Madboly1/Smart-hafeza --target "$GITHUB_SHA" --title "بُؤجة المنفصل 1.0.${GITHUB_RUN_NUMBER}" --notes "تحديث للنسخة المنفصلة فقط (com.hafeza.links.trial). مجموعات ينشئها المستخدم بدون مجموعات جاهزة، إصلاح المشاركة والتحديثات، وعرض مضمّن للروابط العامة المدعومة حسب سماح المنصة. لا يستبدل بؤجة القديم ويحافظ على بيانات النسخة المنفصلة."
 
       - name: Remove reconstructed signing file
         if: always()
