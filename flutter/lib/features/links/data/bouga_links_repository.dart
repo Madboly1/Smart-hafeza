@@ -6,8 +6,9 @@ class BougaLinksRepository {
   final BougaDatabase database;
 
   Future<List<Map<String, Object?>>> list(
-          {String query = '', String? category}) =>
-      database.getLinks(query: query, category: category);
+          {String query = '', String? category, bool oldestFirst = false}) =>
+      database.getLinks(
+          query: query, category: category, oldestFirst: oldestFirst);
 
   Future<List<String>> categories() => database.getCategories();
 
