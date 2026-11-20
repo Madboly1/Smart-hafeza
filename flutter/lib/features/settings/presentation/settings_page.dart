@@ -1,3 +1,4 @@
+import '../data/reminder_service.dart';
 import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import '../data/android_update_service.dart';
@@ -17,6 +18,42 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  final _reminders = ReminderService();
+  ReminderSettings _reminderSettings = const ReminderSettings();
+  bool _savingReminders = false;
+  @override
+  void initState() {
+    super.initState();
+    _loadReminders();
+  }
+
+  Future<void> _loadReminders() async {
+    try {
+      final value = await _reminders.read();
+      if (mounted) setState(() => _reminderSettings = value);
+    } catch (_) {
+      if (mounted) _showMessage('تعذر قراءة إعدادات التذكير.');
+    }
+  }
+
+  Future<void> _saveReminders(bool enabled, int days) async {
+    if (_savingReminders) return;
+    setState(() => _savingReminders = true);
+    try {
+      final value = await _reminders.save(enabled: enabled, days: days);
+      if (!mounted) return;
+      setState(() => _reminderSettings = value);
+      if (enabled && !value.enabled) {
+        _showMessage(
+            'الإشعارات مقفولة. اسمح لبؤجة بالإشعارات من إعدادات الموبايل.');
+      }
+    } catch (_) {
+      if (mounted) _showMessage('تعذر حفظ التذكير، حاول تاني.');
+    } finally {
+      if (mounted) setState(() => _savingReminders = false);
+    }
+  }
+
   UpdateStatus? _updateStatus;
   bool _checkingUpdates = false;
 
@@ -150,6 +187,52 @@ class _SettingsPageState extends State<SettingsPage> {
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            const _SectionTitle('تذكير الروابط'),
+            Card(
+                child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          SwitchListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: const Text('فكّرني باللي لسه ما اتفتحش'),
+                              value: _reminderSettings.enabled,
+                              onChanged:
+                                  !_reminders.supported || _savingReminders
+                                      ? null
+                                      : (value) => _saveReminders(
+                                          value, _reminderSettings.days)),
+                          const Text('بعد كام يوم من الحفظ؟'),
+                          const SizedBox(height: 8),
+                          DropdownButtonFormField<int>(
+                              initialValue: _reminderSettings.days,
+                              decoration: const InputDecoration(
+                                  contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 14)),
+                              items: [1, 2, 3, 7, 14, 30]
+                                  .map((days) => DropdownMenuItem(
+                                      value: days, child: Text('$days أيام')))
+                                  .toList(),
+                              onChanged: !_reminders.supported ||
+                                      _savingReminders
+                                  ? null
+                                  : (days) {
+                                      if (days != null) {
+                                        _saveReminders(
+                                            _reminderSettings.enabled, days);
+                                      }
+                                    }),
+                          const SizedBox(height: 12),
+                          const Text(
+                              'تذكير محلي مجمّع، مرة واحدة لكل رابط. المراجعة يوميًا حوالي ١٠ صباحًا، وممكن تتأخر حسب البطارية. الروابط القديمة اللي مش معروف اتفتحت ولا لأ مش بتدخل في التذكير.',
+                              style: TextStyle(
+                                  color: BougaColors.muted, fontSize: 12)),
+                          if (!_reminders.supported)
+                            const Text('التذكير متاح في نسخة أندرويد.'),
+                          if (_savingReminders) const LinearProgressIndicator(),
+                        ]))),
+            const SizedBox(height: 24),
             const _SectionTitle('النسخ الاحتياطي'),
             Card(
               child: Column(
@@ -162,7 +245,8 @@ class _SettingsPageState extends State<SettingsPage> {
                     subtitle: const Text(
                       'استرجع روابطك وتصنيفاتك من ملف نسخة بُؤجة.',
                     ),
-                    trailing: const Icon(Icons.chevron_left),
+                    trailing: const Icon(Icons.chevron_left,
+                        textDirection: TextDirection.ltr),
                     onTap: widget.onImportBackup,
                   ),
                   const Divider(height: 1, indent: 16, endIndent: 16),
@@ -174,7 +258,8 @@ class _SettingsPageState extends State<SettingsPage> {
                     subtitle: const Text(
                       'احفظ نسخة JSON من روابطك وبياناتك على جهازك.',
                     ),
-                    trailing: const Icon(Icons.chevron_left),
+                    trailing: const Icon(Icons.chevron_left,
+                        textDirection: TextDirection.ltr),
                     onTap: widget.onExportBackup,
                   ),
                 ],
@@ -195,7 +280,8 @@ class _SettingsPageState extends State<SettingsPage> {
                         height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.chevron_left),
+                    : const Icon(Icons.chevron_left,
+                        textDirection: TextDirection.ltr),
                 onTap: _checkingUpdates ? null : _checkForUpdates,
               ),
             ),
@@ -215,7 +301,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   ListTile(
                     leading: Icon(Icons.info_outline, color: BougaColors.mint),
                     title: Text('الإصدار'),
-                    subtitle: Text('1.0.0 • النسخة التأسيسية'),
+                    subtitle:
+                        Text('النسخة المنفصلة • تحديثاتها من الزر الموجود فوق'),
                   ),
                 ],
               ),
