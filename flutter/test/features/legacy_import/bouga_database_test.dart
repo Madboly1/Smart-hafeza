@@ -20,7 +20,8 @@ void main() {
 
   tearDown(() async => database.close());
 
-  test('imports records and preserves unrecognized legacy properties', () async {
+  test('imports records and preserves unrecognized legacy properties',
+      () async {
     final report = await database.importLegacyJson(jsonEncode({
       'schemaVersion': 1,
       'data': {
@@ -44,11 +45,13 @@ void main() {
     final rows = await database.getLinks();
     expect(rows, hasLength(1));
     expect(rows.single['progress'], 35);
-    expect(jsonDecode(rows.single['extra_json']! as String),
-        {'newLegacyFlag': {'kept': true}});
+    expect(jsonDecode(rows.single['extra_json']! as String), {
+      'newLegacyFlag': {'kept': true}
+    });
   });
 
-  test('maps the complete real Capacitor hl link shape into database columns', () async {
+  test('maps the complete real Capacitor hl link shape into database columns',
+      () async {
     await database.importLegacyJson(jsonEncode({
       'schemaVersion': 1,
       'source': 'bouga-capacitor-hl',
@@ -83,12 +86,14 @@ void main() {
     expect(row['category'], 'مونتاج');
     expect(row['kind'], 'فيديو');
     expect(row['image_url'], 'https://example.com/thumb.jpg');
-    expect(jsonDecode(row['extra_json']! as String), {'futureField': 'preserve-me'});
+    expect(jsonDecode(row['extra_json']! as String),
+        {'futureField': 'preserve-me'});
     expect(await database.getCategories(), contains('مونتاج'));
   });
 
   test('same payload is idempotent and does not duplicate rows', () async {
-    const payload = '{"cats":["أخرى"],"links":[{"id":"a","url":"https://a.test"}]}';
+    const payload =
+        '{"cats":["أخرى"],"links":[{"id":"a","url":"https://a.test"}]}';
     final first = await database.importLegacyJson(payload);
     final second = await database.importLegacyJson(payload);
 
@@ -97,7 +102,8 @@ void main() {
     expect(await database.countLinks(), 1);
   });
 
-  test('changed snapshot updates matching IDs without deleting other rows', () async {
+  test('changed snapshot updates matching IDs without deleting other rows',
+      () async {
     await database.importLegacyJson(
       '{"cats":[],"links":[{"id":"a","url":"https://a.test","title":"old"}]}',
     );
@@ -110,7 +116,8 @@ void main() {
     expect(rows.single['title'], 'new');
   });
 
-  test('malformed JSON fails before touching existing database content', () async {
+  test('malformed JSON fails before touching existing database content',
+      () async {
     await database.importLegacyJson(
       '{"cats":[],"links":[{"id":"safe","url":"https://safe.test"}]}',
     );
