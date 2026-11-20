@@ -127,6 +127,51 @@ class BougaDatabase {
     });
   }
 
+  /// Creates an importer-compatible backup from one consistent SQLite snapshot.
+  Future<String> exportLegacyJson() async {
+    return _database.transaction((txn) async {
+      final categoryRows = await txn.query(
+        'categories',
+        columns: ['name'],
+        orderBy: 'sort_order, name',
+      );
+      final categories = categoryRows
+          .map((row) => row['name'] as String)
+          .toList();
+      final linkRows = await txn.query(
+        'links',
+        orderBy: 'last_seen DESC, rowid DESC',
+      );
+      final links = <Map<String, dynamic>>[];
+      for (final row in linkRows) {
+        final extra = jsonDecode(row['extra_json'] as String);
+        final unknown = extra is Map
+            ? Map<String, dynamic>.from(extra)
+            : <String, dynamic>{};
+        links.add({
+          ...unknown,
+          'id': row['id'],
+          'url': row['url'],
+          'k': row['kind'],
+          'c': row['category'],
+          'title': row['title'],
+          'img': row['image_url'],
+          'p': row['progress'],
+          'note': row['note'],
+          'seen': row['last_seen'],
+        });
+        final category = row['category'] as String;
+        if (!categories.contains(category)) categories.add(category);
+      }
+      return jsonEncode({
+        'schemaVersion': 1,
+        'source': 'bouga-flutter',
+        'exportedAt': DateTime.now().toUtc().toIso8601String(),
+        'data': {'links': links, 'cats': categories},
+      });
+    });
+  }
+
   String _unwrapExport(String source) {
     final decoded = jsonDecode(source);
     if (decoded is Map<String, dynamic> && decoded['data'] is Map) {

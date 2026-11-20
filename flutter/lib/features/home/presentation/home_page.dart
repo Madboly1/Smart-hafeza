@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:material_ui/material_ui.dart';
+import '../../links/data/external_link_opener.dart';
+import '../../legacy_import/data/backup_export_service.dart';
 import '../../../core/theme/bouga_tokens.dart';
 import '../../legacy_import/data/bouga_database.dart';
 import '../../links/data/bouga_links_repository.dart';
@@ -14,6 +16,7 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  final ExternalLinkOpener _linkOpener = ExternalLinkOpener();
   BougaDatabase? _db;
   BougaLinksRepository? _repo;
   List<Map<String, Object?>> _links = [];
@@ -126,6 +129,22 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _exportBackup() async {
+    try {
+      final saved = await BackupExportService().save(_db!);
+      if (!mounted || !saved) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم حفظ النسخة الاحتياطية بنجاح.')),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذر تصدير النسخة الاحتياطية: $error')),
+        );
+      }
+    }
+  }
+
   Future<void> _add() async {
     final url = TextEditingController();
     final title = TextEditingController();
@@ -173,6 +192,24 @@ class _HomePageState extends State<HomePage> {
         padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.of(context).viewInsets.bottom + 24),
         child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text(item['url'].toString(), textDirection: TextDirection.ltr, maxLines: 2, overflow: TextOverflow.ellipsis),
+          OutlinedButton.icon(
+            onPressed: () async {
+              final result = await _linkOpener.open(item['url']?.toString() ?? '');
+              if (!context.mounted) return;
+              final message = switch (result) {
+                LinkOpenResult.opened => null,
+                LinkOpenResult.invalidUrl => 'الرابط غير صالح أو غير آمن للفتح.',
+                LinkOpenResult.launchFailed => 'تعذر فتح الرابط. حاول مرة أخرى.',
+              };
+              if (message != null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(message)),
+                );
+              }
+            },
+            icon: const Icon(Icons.open_in_new),
+            label: const Text('فتح الرابط'),
+          ),
           TextField(controller: title, decoration: const InputDecoration(labelText: 'العنوان')),
           TextField(controller: category, decoration: const InputDecoration(labelText: 'التصنيف')),
           TextField(controller: note, maxLines: 3, decoration: const InputDecoration(labelText: 'ملاحظات')),
@@ -198,7 +235,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) => Directionality(
     textDirection: TextDirection.rtl,
     child: Scaffold(
-      appBar: AppBar(actions: [IconButton(tooltip: 'الإعدادات', onPressed: _loading ? null : () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => SettingsPage(onImportBackup: _importBackup))), icon: const Icon(Icons.settings_outlined))], title: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      appBar: AppBar(actions: [IconButton(tooltip: 'الإعدادات', onPressed: _loading ? null : () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => SettingsPage(onImportBackup: _importBackup, onExportBackup: _exportBackup))), icon: const Icon(Icons.settings_outlined))], title: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('BOUGA', style: TextStyle(letterSpacing: 2, fontWeight: FontWeight.w800)),
         Text('كل اللي يهمك.. في بُؤجة واحدة.', style: TextStyle(fontSize: 11, color: BougaColors.muted)),
       ])),

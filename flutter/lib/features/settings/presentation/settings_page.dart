@@ -5,9 +5,10 @@ import '../../../core/theme/bouga_tokens.dart';
 import '../data/update_service.dart';
 
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key, required this.onImportBackup});
+  const SettingsPage({super.key, required this.onImportBackup, required this.onExportBackup});
 
   final Future<void> Function() onImportBackup;
+  final Future<void> Function() onExportBackup;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -117,16 +118,32 @@ class _SettingsPageState extends State<SettingsPage> {
           children: [
             const _SectionTitle('النسخ الاحتياطي'),
             Card(
-              child: ListTile(
-                leading: const CircleAvatar(
-                  child: Icon(Icons.file_upload_outlined),
-                ),
-                title: const Text('استيراد نسخة احتياطية'),
-                subtitle: const Text(
-                  'استرجع روابطك وتصنيفاتك من ملف نسخة بُؤجة.',
-                ),
-                trailing: const Icon(Icons.chevron_left),
-                onTap: widget.onImportBackup,
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: const CircleAvatar(
+                      child: Icon(Icons.file_upload_outlined),
+                    ),
+                    title: const Text('استيراد نسخة احتياطية'),
+                    subtitle: const Text(
+                      'استرجع روابطك وتصنيفاتك من ملف نسخة بُؤجة.',
+                    ),
+                    trailing: const Icon(Icons.chevron_left),
+                    onTap: widget.onImportBackup,
+                  ),
+                  const Divider(height: 1, indent: 16, endIndent: 16),
+                  ListTile(
+                    leading: const CircleAvatar(
+                      child: Icon(Icons.file_download_outlined),
+                    ),
+                    title: const Text('تصدير نسخة احتياطية'),
+                    subtitle: const Text(
+                      'احفظ نسخة JSON من روابطك وبياناتك على جهازك.',
+                    ),
+                    trailing: const Icon(Icons.chevron_left),
+                    onTap: widget.onExportBackup,
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 24),
