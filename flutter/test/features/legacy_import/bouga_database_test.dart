@@ -22,6 +22,34 @@ void main() {
 
   tearDown(() async => database.close());
 
+  test('date sort reverses stable saved order and remains group scoped',
+      () async {
+    await database.importLegacyJson(jsonEncode({
+      'links': [
+        {'id': 'old', 'url': 'https://old.example', 'c': 'group', 'seen': 10},
+        {'id': 'new', 'url': 'https://new.example', 'c': 'group', 'seen': 20},
+        {
+          'id': 'other',
+          'url': 'https://other.example',
+          'c': 'other',
+          'seen': 15
+        },
+      ],
+      'cats': ['group', 'other']
+    }));
+    expect((await database.getLinks()).map((r) => r['id']),
+        ['new', 'other', 'old']);
+    expect((await database.getLinks(oldestFirst: true)).map((r) => r['id']),
+        ['old', 'other', 'new']);
+    expect(
+        (await database.getLinks(category: 'group', oldestFirst: true))
+            .map((r) => r['id']),
+        ['old', 'new']);
+    await database.markOpened('old');
+    expect((await database.getLinks()).map((r) => r['id']),
+        ['new', 'other', 'old']);
+  });
+
   test('version1 upgrade preserves links and groups with unknown opened state',
       () async {
     final temp = await Directory.systemTemp.createTemp('bouga-migration-test');
