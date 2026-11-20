@@ -26,5 +26,5 @@ for abi in ['arm64-v8a','armeabi-v7a','x86_64']:
  'sha256':hashlib.sha256(apk.read_bytes()).hexdigest(),
  'packageName':'com.hafeza.links.trial','certificateSha256':'5abedd4dafc3df4a732f97aa27af7aeb6df24c452ac5d2af8b5f4e2b4db97d3d',
  }
- (root/f'update-{abi}.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+ (root/f'update-{abi}.json').write_text(json.dumps(manifest,ensure_ascii=True,indent=2),encoding='utf-8')
 print(tag)
