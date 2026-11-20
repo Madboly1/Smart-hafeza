@@ -5,7 +5,8 @@ import '../../../core/theme/bouga_tokens.dart';
 import '../data/update_service.dart';
 
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key, required this.onImportBackup, required this.onExportBackup});
+  const SettingsPage(
+      {super.key, required this.onImportBackup, required this.onExportBackup});
 
   final Future<void> Function() onImportBackup;
   final Future<void> Function() onExportBackup;
