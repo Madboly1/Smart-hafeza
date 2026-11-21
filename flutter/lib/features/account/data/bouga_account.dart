@@ -177,7 +177,7 @@ class GoogleSignInOptIn {
 
   Future<bool> get chosen async {
     try {
-      return (await _flag).exists();
+      return await (await _flag).exists();
     } catch (_) {
       return false;
     }
