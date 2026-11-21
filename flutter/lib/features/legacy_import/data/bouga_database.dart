@@ -114,10 +114,23 @@ class BougaDatabase {
             whereArgs: [link.id],
             limit: 1);
         final old = existing.isEmpty ? <String, Object?>{} : existing.first;
-        final state =
-            ['unknown', 'unopened', 'opened'].contains(fields['bougaOpenState'])
-                ? fields['bougaOpenState']
-                : old['open_state'] ?? 'unknown';
+        // Open progress is monotonic: once a link is opened on either side,
+        // a restore must never regress it to unopened/unknown.
+        final incoming = ['unknown', 'unopened', 'opened']
+                .contains(fields['bougaOpenState'])
+            ? fields['bougaOpenState'] as String
+            : null;
+        final localState = old['open_state'] as String? ?? 'unknown';
+        final state = (localState == 'opened' || incoming == 'opened')
+            ? 'opened'
+            : (incoming ?? localState);
+        final openedAt = state == 'opened'
+            ? [old['opened_at'], fields['bougaOpenedAt']]
+                .whereType<int>()
+                .fold<int?>(null, (a, b) => a == null || b > a ? b : a)
+            : (fields['bougaOpenedAt'] is int
+                ? fields['bougaOpenedAt']
+                : old['opened_at']);
         await txn.insert(
           'links',
           {
@@ -132,9 +145,7 @@ class BougaDatabase {
             'last_seen': fields['seen'] as int? ?? 0,
             'extra_json': jsonEncode(extra),
             'open_state': state,
-            'opened_at': fields['bougaOpenedAt'] is int
-                ? fields['bougaOpenedAt']
-                : old['opened_at'],
+            'opened_at': openedAt,
           },
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
