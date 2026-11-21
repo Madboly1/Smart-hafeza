@@ -101,10 +101,17 @@ jobs:
           import re, sys
           target = sys.argv[1]
           xml = open('ui.xml', encoding='utf-8').read()
-          for m in re.finditer(r'(?:text|content-desc)="([^"]*)"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', xml):
-              if target in m.group(1):
-                  x = (int(m.group(2)) + int(m.group(4))) // 2
-                  y = (int(m.group(3)) + int(m.group(5))) // 2
+          for m in re.finditer(r'<node\b[^>]*>', xml):
+              tag = m.group(0)
+              tm = re.search(r'text="([^"]*)"', tag)
+              dm = re.search(r'content-desc="([^"]*)"', tag)
+              bm = re.search(r'bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', tag)
+              if not bm:
+                  continue
+              val = (tm.group(1) if tm else '') + ' ' + (dm.group(1) if dm else '')
+              if target in val:
+                  x = (int(bm.group(1)) + int(bm.group(3))) // 2
+                  y = (int(bm.group(2)) + int(bm.group(4))) // 2
                   print(x, y)
                   break
           PY
@@ -156,7 +163,7 @@ jobs:
           adb exec-out screencap -p > shots/05_local_backup_section.png
 
           adb logcat -d > shots/logcat_full.txt || true
-          grep -iE 'FATAL EXCEPTION|AndroidRuntime|beginning of crash' shots/logcat_full.txt > shots/crash_hits.txt || true
+          grep -E 'FATAL EXCEPTION|beginning of crash' shots/logcat_full.txt > shots/crash_hits.txt || true
           {
             echo "CRASH_HITS=$(wc -l < shots/crash_hits.txt)"
             echo "PACKAGE=com.hafeza.bouga (debug screen-check identity)"
