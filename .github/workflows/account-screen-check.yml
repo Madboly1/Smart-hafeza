@@ -13,6 +13,9 @@ permissions:
 
 jobs:
   account-screens:
+    # Opt out of the emulator harness for a given push with [no-screens] in
+    # the commit message (e.g. signed-build-only runs).
+    if: ${{ !contains(github.event.head_commit.message, '[no-screens]') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -329,7 +332,10 @@ jobs:
           test -n "${BOUGA_KEYSTORE_PATH:-}"
           test -s "$BOUGA_KEYSTORE_PATH"
           test -n "$BOUGA_SIGNING_PASSWORD"
-          flutter build apk --release --split-per-abi
+          # Build-number 3014 mirrors the production 3000+run scheme and puts
+          # the arm64 split at 5014, above the installed trial 5013, so the
+          # artifact is install-eligible. Artifact-only: never published.
+          flutter build apk --release --split-per-abi --build-number 3014
           compgen -G "build/app/outputs/flutter-apk/app-*-release.apk" >/dev/null
       - name: Verify package, signature, size
         run: |
