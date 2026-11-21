@@ -33,7 +33,28 @@ class BougaAccount {
     _initialized = true;
     final signIn = GoogleSignIn.instance;
     await signIn.initialize(serverClientId: serverClientId);
-    _subscription = signIn.authenticationEvents.listen(
+    _subscription = attachAuthenticationEvents(
+      signIn.authenticationEvents,
+      currentUser,
+    );
+    final lightweight = signIn.attemptLightweightAuthentication();
+    if (lightweight != null) {
+      unawaited(lightweight.catchError((_) => null));
+    }
+  }
+
+  /// Applies authentication events to [currentUser]. Auth failures also
+  /// surface on this stream (google_sign_in forwards them via addError),
+  /// so onError swallows them: the awaited paths already report errors to
+  /// the UI, and an unhandled stream error would reach the zone as an
+  /// unhandled exception.
+  @visibleForTesting
+  static StreamSubscription<GoogleSignInAuthenticationEvent>
+      attachAuthenticationEvents(
+    Stream<GoogleSignInAuthenticationEvent> events,
+    ValueNotifier<GoogleSignInAccount?> currentUser,
+  ) {
+    return events.listen(
       (event) {
         if (event is GoogleSignInAuthenticationEventSignIn) {
           currentUser.value = event.user;
@@ -41,14 +62,8 @@ class BougaAccount {
           currentUser.value = null;
         }
       },
-      // Auth failures also surface on this stream; without onError they
-      // reach the zone as unhandled. The awaited paths report errors already.
       onError: (_) {},
     );
-    final lightweight = signIn.attemptLightweightAuthentication();
-    if (lightweight != null) {
-      unawaited(lightweight.catchError((_) => null));
-    }
   }
 
   /// Returns null on success, 'canceled' when the user dismisses the flow,
