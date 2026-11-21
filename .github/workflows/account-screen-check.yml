@@ -380,6 +380,18 @@ jobs:
             echo "SIZE_BYTES=$(stat -c%s "$APK")"
           done
           echo "SIGNATURE MATCHES PUBLISHED TRIAL APP"
+      - name: Verify native entries inside the built trial APKs
+        run: |
+          set -e
+          BT=$(ls "$ANDROID_HOME/build-tools/" | sort -V | tail -1)
+          for APK in build/app/outputs/flutter-apk/app-*-release.apk; do
+            echo "== $APK"
+            "$ANDROID_HOME/build-tools/$BT/aapt" dump xmltree "$APK" AndroidManifest.xml > /tmp/manifest.txt
+            grep -q 'android.intent.action.SEND' /tmp/manifest.txt
+            grep -q 'BougaReminderReceiver' /tmp/manifest.txt
+            grep -q 'androidx.core.content.FileProvider' /tmp/manifest.txt
+          done
+          echo "TRIAL APKS CONTAIN SHARE+REMINDERS+UPDATER ENTRIES"
       - name: Upload signed APKs artifact (Actions only, never published)
         uses: actions/upload-artifact@v4
         with:
