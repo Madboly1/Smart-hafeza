@@ -361,7 +361,7 @@ jobs:
           # Build-number 3015 mirrors the production 3000+run scheme and puts
           # the arm64 split at 5015, above the installed trial 5014, so the
           # artifact is install-eligible and update-deliverable.
-          flutter build apk --release --split-per-abi --build-number 3015
+          flutter build apk --release --split-per-abi --build-number 3015 --build-name "1.0.14"
           compgen -G "build/app/outputs/flutter-apk/app-*-release.apk" >/dev/null
       - name: Verify package, signature, size
         run: |
