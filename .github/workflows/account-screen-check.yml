@@ -1,0 +1,348 @@
+name: BOUGA Account Screen and Signed Build Check
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/google-drive-backup
+    paths:
+      - .github/workflows/account-screen-check.yml
+
+permissions:
+  contents: write
+
+jobs:
+  account-screens:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flutter
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up stable Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generate Android runner
+        run: flutter create --platforms=android --org com.hafeza --project-name bouga .
+      - name: Configure Android compile SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f android/app/build.gradle.kts ]]; then
+            sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/' android/app/build.gradle.kts
+            grep -q 'compileSdk = 36' android/app/build.gradle.kts
+          elif [[ -f android/app/build.gradle ]]; then
+            sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 36/' android/app/build.gradle
+            grep -q 'compileSdkVersion 36' android/app/build.gradle
+          else
+            echo "Generated Android app Gradle file not found" >&2
+            exit 1
+          fi
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Build debug APK
+        run: flutter build apk --debug
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+      - name: Install emulator image
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "emulator" "system-images;android-31;google_apis;x86_64"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/emulator" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+      - name: Create and boot AVD
+        run: |
+          export ANDROID_SDK_HOME="$HOME"
+          export ANDROID_AVD_HOME="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo no | avdmanager create avd -n acct -k "system-images;android-31;google_apis;x86_64" --device "pixel_5" --force
+          CFG="$ANDROID_AVD_HOME/acct.avd/config.ini"
+          if [ ! -f "$CFG" ]; then
+            CFG=$(find "$HOME" /usr/local/lib/android -maxdepth 6 -path "*acct.avd/config.ini" 2>/dev/null | head -1)
+          fi
+          if [ -z "$CFG" ] || [ ! -f "$CFG" ]; then
+            echo "acct AVD config.ini not found"; exit 1
+          fi
+          export ANDROID_AVD_HOME="$(dirname "$(dirname "$CFG")")"
+          echo "hw.ramSize=3072" >> "$CFG"
+          echo "disk.dataPartition.size=4G" >> "$CFG"
+          nohup emulator -avd acct -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot-save -memory 3072 > /tmp/emulator.log 2>&1 &
+          adb wait-for-device
+          for i in $(seq 1 120); do
+            BOOT=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+            if [ "$BOOT" = "1" ]; then echo "booted after $((i*5))s"; break; fi
+            sleep 5
+          done
+          if [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" != "1" ]; then
+            echo "EMULATOR BOOT TIMEOUT"; tail -50 /tmp/emulator.log || true; exit 1
+          fi
+      - name: Exercise account screens pre-sign-in
+        run: |
+          set -x
+          mkdir -p shots
+          adb install -r build/app/outputs/flutter-apk/app-debug.apk
+          adb shell pm clear com.hafeza.bouga
+          adb logcat -c
+          adb shell monkey -p com.hafeza.bouga -c android.intent.category.LAUNCHER 1
+          sleep 15
+
+          tap_text() {
+            adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+            adb pull /sdcard/ui.xml ui.xml >/dev/null 2>&1
+            python3 - "$1" <<'PY' > /tmp/tap.txt
+          import re, sys
+          target = sys.argv[1]
+          xml = open('ui.xml', encoding='utf-8').read()
+          for m in re.finditer(r'(?:text|content-desc)="([^"]*)"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', xml):
+              if target in m.group(1):
+                  x = (int(m.group(2)) + int(m.group(4))) // 2
+                  y = (int(m.group(3)) + int(m.group(5))) // 2
+                  print(x, y)
+                  break
+          PY
+          }
+          try_tap() {
+            tap_text "$1"
+            read X Y < /tmp/tap.txt || true
+            if [ -n "${X:-}" ]; then adb shell input tap $X $Y; unset X Y; return 0; fi
+            unset X Y; return 1
+          }
+          scroll_until() {
+            for i in $(seq 1 8); do
+              if try_tap "$1"; then return 0; fi
+              adb shell input swipe 540 1700 540 700
+              sleep 2
+            done
+            return 1
+          }
+
+          # Skip first-run tour if present
+          for i in 1 2 3; do
+            try_tap "تخطّي الجولة" || true
+            sleep 2
+          done
+          adb exec-out screencap -p > shots/01_home.png
+
+          # Open settings via tooltip
+          try_tap "الإعدادات" || true
+          sleep 4
+          adb exec-out screencap -p > shots/02_settings_top.png
+
+          # Cloud account section
+          scroll_until "الحساب والنسخ السحابي" || true
+          sleep 3
+          adb exec-out screencap -p > shots/03_account_section.png
+
+          # Tap sign-in: expect Google account picker / add-account UI, no account configured
+          try_tap "تسجيل الدخول بحساب جوجل" || true
+          sleep 8
+          adb exec-out screencap -p > shots/04_signin_prompt.png
+          adb shell uiautomator dump /sdcard/ui2.xml >/dev/null 2>&1
+          adb pull /sdcard/ui2.xml shots/ui_at_signin.xml >/dev/null 2>&1 || true
+          adb shell input keyevent 4
+          sleep 2
+
+          # Local backup section
+          scroll_until "النسخ الاحتياطي" || true
+          sleep 3
+          adb exec-out screencap -p > shots/05_local_backup_section.png
+
+          adb logcat -d > shots/logcat_full.txt || true
+          grep -iE 'FATAL EXCEPTION|AndroidRuntime|beginning of crash' shots/logcat_full.txt > shots/crash_hits.txt || true
+          {
+            echo "CRASH_HITS=$(wc -l < shots/crash_hits.txt)"
+            echo "PACKAGE=com.hafeza.bouga (debug screen-check identity)"
+          } > shots/results.txt
+          cat shots/results.txt
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bouga-account-shots
+          path: flutter/shots/
+      - name: Push shots to evidence branch
+        if: always()
+        run: |
+          set -e
+          BR="bouga-account-evidence-r${{ github.run_id }}"
+          mkdir -p /tmp/ev
+          cp flutter/shots/* /tmp/ev/ 2>/dev/null || true
+          cd /tmp/ev
+          git init -b "$BR" .
+          git config user.email "ci@bouga.local"
+          git config user.name "bouga-account-ci"
+          git add .
+          git commit -m "Bouga account screen evidence for run ${{ github.run_id }} (head ${{ github.sha }})" || true
+          PUSH_URL="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          git push "$PUSH_URL" "$BR:$BR"
+      - name: Emulator log on failure
+        if: failure()
+        run: tail -100 /tmp/emulator.log || true
+
+  signed-build-only:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flutter
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Fail closed when signing secrets are unavailable
+        shell: bash
+        env:
+          BOUGA_KEYSTORE_BASE64: ${{ secrets.BOUGA_KEYSTORE_BASE64 }}
+          BOUGA_SIGNING_PASSWORD: ${{ secrets.BOUGA_SIGNING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${BOUGA_KEYSTORE_BASE64}" || -z "${BOUGA_SIGNING_PASSWORD}" ]]; then
+            echo "Required BOUGA trial signing secrets are not configured." >&2
+            exit 1
+          fi
+      - name: Set up stable Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generate Android runner
+        run: flutter create --platforms=android --org com.hafeza --project-name bouga .
+      - name: Configure Android compile SDK 36 and trial-only identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f android/app/build.gradle.kts ]]; then
+            sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/' android/app/build.gradle.kts
+            sed -i 's/applicationId = "com.hafeza.bouga"/applicationId = "com.hafeza.links.trial"/' android/app/build.gradle.kts
+            grep -q 'compileSdk = 36' android/app/build.gradle.kts
+            grep -q 'applicationId = "com.hafeza.links.trial"' android/app/build.gradle.kts
+          elif [[ -f android/app/build.gradle ]]; then
+            sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 36/' android/app/build.gradle
+            sed -i "s/applicationId 'com.hafeza.bouga'/applicationId 'com.hafeza.links.trial'/" android/app/build.gradle
+            grep -q 'compileSdkVersion 36' android/app/build.gradle
+            grep -q "applicationId 'com.hafeza.links.trial'" android/app/build.gradle
+          else
+            echo "Generated Android app Gradle file not found" >&2
+            exit 1
+          fi
+          if [[ ! -f android/app/src/main/AndroidManifest.xml ]]; then
+            echo "Generated AndroidManifest.xml not found" >&2
+            exit 1
+          fi
+          sed -i 's/android:label="bouga"/android:label="بؤجة"/' android/app/src/main/AndroidManifest.xml
+          grep -q 'android:label="بؤجة"' android/app/src/main/AndroidManifest.xml
+          if grep -Eq 'applicationId[[:space:]]*(=)?[[:space:]]*["'\'' ]com\.hafeza\.links["'\'']' android/app/build.gradle*; then
+            echo "Production application ID detected; refusing to build." >&2
+            exit 1
+          fi
+      - name: Generate existing launcher icon
+        run: dart run flutter_launcher_icons
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Reconstruct encrypted trial keystore in runner temp
+        shell: bash
+        env:
+          BOUGA_KEYSTORE_BASE64: ${{ secrets.BOUGA_KEYSTORE_BASE64 }}
+          BOUGA_SIGNING_PASSWORD: ${{ secrets.BOUGA_SIGNING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          KEYSTORE_PATH="$RUNNER_TEMP/bouga-trial-signing.p12"
+          trap 'rm -f "$KEYSTORE_PATH"' EXIT
+          printf '%s' "$BOUGA_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          openssl pkcs12 -in "$KEYSTORE_PATH" -passin env:BOUGA_SIGNING_PASSWORD -noout
+          printf 'BOUGA_KEYSTORE_PATH=%s\n' "$KEYSTORE_PATH" >> "$GITHUB_ENV"
+          trap - EXIT
+      - name: Configure mandatory trial release signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${BOUGA_KEYSTORE_PATH:-}"
+          test -s "$BOUGA_KEYSTORE_PATH"
+          if [[ -f android/app/build.gradle.kts ]]; then
+            cat >> android/app/build.gradle.kts <<'GRADLE'
+
+          // BOUGA isolated trial signing: never use the generated debug key.
+          android {
+              signingConfigs {
+                  create("bougaTrialRelease") {
+                      storeFile = file(System.getenv("BOUGA_KEYSTORE_PATH")
+                          ?: error("BOUGA_KEYSTORE_PATH is required"))
+                      storePassword = System.getenv("BOUGA_SIGNING_PASSWORD")
+                          ?: error("BOUGA_SIGNING_PASSWORD is required")
+                      keyAlias = "bouga"
+                      keyPassword = System.getenv("BOUGA_SIGNING_PASSWORD")
+                          ?: error("BOUGA_SIGNING_PASSWORD is required")
+                  }
+              }
+              buildTypes {
+                  getByName("release") {
+                      signingConfig = signingConfigs.getByName("bougaTrialRelease")
+                  }
+              }
+          }
+          GRADLE
+          elif [[ -f android/app/build.gradle ]]; then
+            cat >> android/app/build.gradle <<'GRADLE'
+
+          // BOUGA isolated trial signing: never use the generated debug key.
+          android {
+              signingConfigs {
+                  bougaTrialRelease {
+                      storeFile file(System.getenv("BOUGA_KEYSTORE_PATH") ?: { throw new GradleException("BOUGA_KEYSTORE_PATH is required") }())
+                      storePassword System.getenv("BOUGA_SIGNING_PASSWORD") ?: { throw new GradleException("BOUGA_SIGNING_PASSWORD is required") }()
+                      keyAlias "bouga"
+                      keyPassword System.getenv("BOUGA_SIGNING_PASSWORD") ?: { throw new GradleException("BOUGA_SIGNING_PASSWORD is required") }()
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.bougaTrialRelease
+                  }
+              }
+          }
+          GRADLE
+          else
+            echo "Generated Android app Gradle file not found" >&2
+            exit 1
+          fi
+      - name: Build signed split-per-ABI trial release APKs (no publish, no OTA, no store)
+        shell: bash
+        env:
+          BOUGA_SIGNING_PASSWORD: ${{ secrets.BOUGA_SIGNING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "${BOUGA_KEYSTORE_PATH:-}"
+          test -s "$BOUGA_KEYSTORE_PATH"
+          test -n "$BOUGA_SIGNING_PASSWORD"
+          flutter build apk --release --split-per-abi
+          compgen -G "build/app/outputs/flutter-apk/app-*-release.apk" >/dev/null
+      - name: Verify package, signature, size
+        run: |
+          set -e
+          BT=$(ls "$ANDROID_HOME"/build-tools/ | sort -V | tail -1)
+          EXPECTED="A8:9E:8C:20:33:92:30:D6:67:3A:87:C0:02:5C:F8:D5:E3:E9:09:CC"
+          for APK in build/app/outputs/flutter-apk/app-*-release.apk; do
+            echo "== $APK"
+            "$ANDROID_HOME/build-tools/$BT/apksigner" verify --print-certs "$APK" | grep -i 'SHA-1' | tee /tmp/cert.txt
+            SHA1=$(grep -m1 -oiE 'SHA-1 digest: [0-9a-f:]+' /tmp/cert.txt | awk '{print $NF}')
+            SHA1=$(echo "$SHA1" | tr 'a-f' 'A-F')
+            echo "COMPUTED_SHA1=$SHA1 EXPECTED=$EXPECTED"
+            if [ "$SHA1" != "$EXPECTED" ]; then echo "SIGNATURE MISMATCH"; exit 1; fi
+            "$ANDROID_HOME/build-tools/$BT/aapt" dump badging "$APK" | grep -E 'package:|application-label:'
+            echo "SIZE_BYTES=$(stat -c%s "$APK")"
+          done
+          echo "SIGNATURE MATCHES PUBLISHED TRIAL APP"
+      - name: Upload signed APKs artifact (Actions only, never published)
+        uses: actions/upload-artifact@v4
+        with:
+          name: bouga-signed-trial-no-ota
+          path: flutter/build/app/outputs/flutter-apk/app-*-release.apk
+          if-no-files-found: error
