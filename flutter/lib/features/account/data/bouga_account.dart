@@ -33,13 +33,18 @@ class BougaAccount {
     _initialized = true;
     final signIn = GoogleSignIn.instance;
     await signIn.initialize(serverClientId: serverClientId);
-    _subscription = signIn.authenticationEvents.listen((event) {
-      if (event is GoogleSignInAuthenticationEventSignIn) {
-        currentUser.value = event.user;
-      } else if (event is GoogleSignInAuthenticationEventSignOut) {
-        currentUser.value = null;
-      }
-    });
+    _subscription = signIn.authenticationEvents.listen(
+      (event) {
+        if (event is GoogleSignInAuthenticationEventSignIn) {
+          currentUser.value = event.user;
+        } else if (event is GoogleSignInAuthenticationEventSignOut) {
+          currentUser.value = null;
+        }
+      },
+      // Auth failures also surface on this stream; without onError they
+      // reach the zone as unhandled. The awaited paths report errors already.
+      onError: (_) {},
+    );
     final lightweight = signIn.attemptLightweightAuthentication();
     if (lightweight != null) {
       unawaited(lightweight.catchError((_) => null));
