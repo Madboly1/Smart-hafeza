@@ -174,7 +174,7 @@ jobs:
           set -e
           BR="bouga-account-evidence-r${{ github.run_id }}"
           mkdir -p /tmp/ev
-          cp flutter/shots/* /tmp/ev/ 2>/dev/null || true
+          cp shots/* /tmp/ev/ 2>/dev/null || true
           cd /tmp/ev
           git init -b "$BR" .
           git config user.email "ci@bouga.local"
@@ -333,9 +333,10 @@ jobs:
             echo "== $APK"
             "$ANDROID_HOME/build-tools/$BT/apksigner" verify --print-certs "$APK" | grep -i 'SHA-1' | tee /tmp/cert.txt
             SHA1=$(grep -m1 -oiE 'SHA-1 digest: [0-9a-f:]+' /tmp/cert.txt | awk '{print $NF}')
-            SHA1=$(echo "$SHA1" | tr 'a-f' 'A-F')
-            echo "COMPUTED_SHA1=$SHA1 EXPECTED=$EXPECTED"
-            if [ "$SHA1" != "$EXPECTED" ]; then echo "SIGNATURE MISMATCH"; exit 1; fi
+            SHA1=$(echo "$SHA1" | tr -d ':' | tr 'a-f' 'A-F')
+            EXPECTED_NORM=$(echo "$EXPECTED" | tr -d ':')
+            echo "COMPUTED_SHA1=$SHA1 EXPECTED=$EXPECTED_NORM"
+            if [ "$SHA1" != "$EXPECTED_NORM" ]; then echo "SIGNATURE MISMATCH"; exit 1; fi
             "$ANDROID_HOME/build-tools/$BT/aapt" dump badging "$APK" | grep -E 'package:|application-label:'
             echo "SIZE_BYTES=$(stat -c%s "$APK")"
           done
