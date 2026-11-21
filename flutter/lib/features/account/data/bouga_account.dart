@@ -144,16 +144,16 @@ class BougaAccount {
   /// Authorization headers carrying a Drive access token. Identity sign-in
   /// stays separate from Drive authorization: the first backup asks for the
   /// Drive permission explicitly.
-  Future<Map<String, String>?> driveHeaders({bool promptIfNeeded = false}) {
+  Future<Map<String, String>?> driveHeaders({bool promptIfNeeded = false}) async {
     final account = currentUser.value;
-    if (account == null) return Future.value();
+    if (account == null) return null;
     try {
-      return account.authorizationClient.authorizationHeaders(
+      return await account.authorizationClient.authorizationHeaders(
         driveScopes,
         promptIfNecessary: promptIfNeeded,
       );
     } on GoogleSignInException {
-      return Future.value();
+      return null;
     }
   }
 
