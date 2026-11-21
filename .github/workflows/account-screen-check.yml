@@ -253,6 +253,13 @@ jobs:
           fi
       - name: Generate existing launcher icon
         run: dart run flutter_launcher_icons
+      - name: Configure Android incoming text sharing
+        run: |
+          python3 tool/test_reminders.py
+          python3 tool/configure_incoming_share.py
+          python3 tool/configure_reminders.py
+          grep -q 'android.intent.action.SEND' android/app/src/main/AndroidManifest.xml
+          grep -q 'bouga/incoming_share' android/app/src/main/kotlin/com/hafeza/bouga/MainActivity.kt
       - name: Install dependencies
         run: flutter pub get
       - name: Reconstruct encrypted trial keystore in runner temp
