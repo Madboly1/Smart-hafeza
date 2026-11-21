@@ -179,7 +179,7 @@ jobs:
           cat shots/results.txt
       - name: Verify share target resolves and receives text
         run: |
-          adb shell cmd package resolve-activity -a android.intent.action.SEND -t text/plain > /tmp/resolve.txt || true
+          adb shell cmd package query-activities --brief -a android.intent.action.SEND -t text/plain > /tmp/resolve.txt || true
           cat /tmp/resolve.txt
           grep -q 'com.hafeza.bouga' /tmp/resolve.txt
           adb shell am start -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT 'https://youtu.be/ci-share-probe' -n com.hafeza.bouga/.MainActivity
