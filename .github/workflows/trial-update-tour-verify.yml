@@ -1,0 +1,340 @@
+name: BOUGA Trial Update 13-14 and Tour 5015 Verify
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/google-drive-backup
+    paths:
+      - .github/workflows/trial-update-tour-verify.yml
+
+permissions:
+  contents: read
+
+jobs:
+  tour-5015:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Download signed release 14 x86_64 APK
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://github.com/Madboly1/Smart-hafeza/releases/download/bouga-isolated-14/app-x86_64-release.apk" -o bouga-14.apk
+          echo "f12f1ab07ca3155a58b6ac1d609a5559e38c8b4ca4fac9868a416f8cf76d8868  bouga-14.apk" | sha256sum -c -
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+      - name: Install emulator image
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "emulator" "system-images;android-31;google_apis;x86_64"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/emulator" >> "$GITHUB_PATH"
+      - name: Create and boot AVD
+        run: |
+          export ANDROID_SDK_HOME="$HOME"
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n vfy -k "system-images;android-31;google_apis;x86_64" --device "pixel_5" --force
+          CFG="$HOME/.android/avd/vfy.avd/config.ini"
+          echo "hw.ramSize=3072" >> "$CFG"
+          echo "disk.dataPartition.size=4G" >> "$CFG"
+          nohup "$ANDROID_HOME/emulator/emulator" -avd vfy -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot-save -memory 3072 > /tmp/emulator.log 2>&1 &
+          "$ANDROID_HOME/platform-tools/adb" wait-for-device
+          for i in $(seq 1 120); do
+            BOOT=$("$ANDROID_HOME/platform-tools/adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+            if [ "$BOOT" = "1" ]; then echo "booted after $((i*5))s"; break; fi
+            sleep 5
+          done
+          if [ "$("$ANDROID_HOME/platform-tools/adb" shell getprop sys.boot_completed | tr -d '\r')" != "1" ]; then
+            echo "EMULATOR BOOT TIMEOUT"; tail -50 /tmp/emulator.log || true; exit 1
+          fi
+      - name: Walk first-run tour on signed 5015
+        run: |
+          python3 - <<'PY'
+          import subprocess, re, sys, time, os
+          ADB = os.environ.get('ANDROID_HOME', '/usr/local/lib/android/sdk') + '/platform-tools/adb'
+          PKG = 'com.hafeza.links.trial'
+          os.makedirs('shots', exist_ok=True)
+          def sh(*args, check=True):
+              return subprocess.run([ADB, *args], capture_output=True, text=True, check=check)
+          def dump():
+              sh('shell', 'uiautomator', 'dump', '/sdcard/ui.xml', check=False)
+              time.sleep(1)
+              r = sh('pull', '/sdcard/ui.xml', '/tmp/ui.xml', check=False)
+              try:
+                  return open('/tmp/ui.xml', encoding='utf-8').read()
+              except Exception:
+                  return ''
+          def nodes(xml):
+              out = []
+              for m in re.finditer(r'<node\b[^>]*>', xml):
+                  tag = m.group(0)
+                  tm = re.search(r'text="([^"]*)"', tag)
+                  dm = re.search(r'content-desc="([^"]*)"', tag)
+                  bm = re.search(r'bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', tag)
+                  if not bm: continue
+                  out.append((((tm.group(1) if tm else '') + ' ' + (dm.group(1) if dm else '')),
+                              tuple(int(bm.group(i)) for i in (1, 2, 3, 4))))
+              return out
+          def find(xml, *targets):
+              for val, b in nodes(xml):
+                  for t in targets:
+                      if t in val:
+                          return ((b[0]+b[2])//2, (b[1]+b[3])//2, t)
+              return None
+          def tap(x, y):
+              sh('shell', 'input', 'tap', str(x), str(y))
+          def shot(name):
+              with open(f'shots/{name}.png', 'wb') as f:
+                  subprocess.run([ADB, 'exec-out', 'screencap', '-p'], stdout=f)
+          def launch():
+              sh('shell', 'monkey', '-p', PKG, '-c', 'android.intent.category.LAUNCHER', '1', check=False)
+          log = []
+          sh('install', '-r', 'bouga-14.apk')
+          sh('shell', 'pm', 'clear', PKG)
+          sh('logcat', '-c')
+          launch(); time.sleep(14)
+          steps = 0
+          finished = False
+          for i in range(16):
+              xml = dump()
+              fin = find(xml, 'إنهاء')
+              nxt = find(xml, 'التالي')
+              skip = find(xml, 'تخطّي الجولة')
+              if fin:
+                  shot(f'tour_step_{steps+1:02d}_final'); steps += 1
+                  tap(fin[0], fin[1]); time.sleep(3)
+                  finished = True
+                  log.append(f'finished after step {steps}')
+                  break
+              if nxt or skip:
+                  shot(f'tour_step_{steps+1:02d}'); steps += 1
+                  tap((nxt or skip)[0], (nxt or skip)[1]); time.sleep(2)
+                  continue
+              if find(xml, 'الإعدادات', 'مجموعة جديدة'):
+                  log.append(f'home reached without finish button at iter {i}')
+                  finished = True
+                  break
+              time.sleep(3)
+          shot('home_after_tour')
+          xml = dump()
+          home_ok = bool(find(xml, 'الإعدادات', 'مجموعة جديدة'))
+          log.append(f'HOME_AFTER_TOUR={home_ok}')
+          sh('shell', 'am', 'force-stop', PKG, check=False)
+          launch(); time.sleep(10)
+          xml = dump()
+          no_retour = not bool(find(xml, 'التالي', 'تخطّي الجولة'))
+          home2 = bool(find(xml, 'الإعدادات', 'مجموعة جديدة'))
+          shot('relaunch_no_tour')
+          log.append(f'TOUR_FLAG_PERSISTED={no_retour and home2}')
+          log.append(f'STEPS_WALKED={steps}')
+          open('shots/tour_log.txt', 'w').write('\n'.join(log))
+          print('\n'.join(log))
+          r = sh('logcat', '-d', check=False)
+          open('shots/logcat.txt', 'w').write(r.stdout)
+          crashes = [l for l in r.stdout.splitlines() if 'FATAL' in l and PKG in l]
+          print('FATAL_HITS=' + str(len(crashes)))
+          if not (finished and home_ok and steps >= 3):
+              sys.exit('tour walk incomplete')
+          PY
+      - name: Upload tour evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tour-5015-evidence
+          path: shots/
+          retention-days: 14
+
+  updater-13-14:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Download signed release 13 x86_64 APK and check its manifest hash
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://github.com/Madboly1/Smart-hafeza/releases/download/bouga-isolated-13/app-x86_64-release.apk" -o bouga-13.apk
+          curl -fsSL "https://github.com/Madboly1/Smart-hafeza/releases/download/bouga-isolated-13/update-x86_64.json" -o update13.json
+          python3 - <<'PY'
+          import json, hashlib
+          m = json.load(open('update13.json'))
+          want = m['sha256'].lower()
+          got = hashlib.sha256(open('bouga-13.apk','rb').read()).hexdigest()
+          print('manifest vc', m['versionCode'], 'want', want)
+          print('actual sha256', got)
+          assert got == want, 'release13 apk hash mismatch vs its manifest'
+          PY
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+      - name: Install emulator image
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "emulator" "system-images;android-31;google_apis;x86_64"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/emulator" >> "$GITHUB_PATH"
+      - name: Create and boot AVD
+        run: |
+          export ANDROID_SDK_HOME="$HOME"
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n vfy -k "system-images;android-31;google_apis;x86_64" --device "pixel_5" --force
+          CFG="$HOME/.android/avd/vfy.avd/config.ini"
+          echo "hw.ramSize=3072" >> "$CFG"
+          echo "disk.dataPartition.size=4G" >> "$CFG"
+          nohup "$ANDROID_HOME/emulator/emulator" -avd vfy -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot-save -memory 3072 > /tmp/emulator.log 2>&1 &
+          "$ANDROID_HOME/platform-tools/adb" wait-for-device
+          for i in $(seq 1 120); do
+            BOOT=$("$ANDROID_HOME/platform-tools/adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+            if [ "$BOOT" = "1" ]; then echo "booted after $((i*5))s"; break; fi
+            sleep 5
+          done
+          if [ "$("$ANDROID_HOME/platform-tools/adb" shell getprop sys.boot_completed | tr -d '\r')" != "1" ]; then
+            echo "EMULATOR BOOT TIMEOUT"; tail -50 /tmp/emulator.log || true; exit 1
+          fi
+      - name: Exercise in-app updater from signed 7013 to 7015
+        run: |
+          python3 - <<'PY'
+          import subprocess, re, sys, time, os
+          ADB = os.environ.get('ANDROID_HOME', '/usr/local/lib/android/sdk') + '/platform-tools/adb'
+          PKG = 'com.hafeza.links.trial'
+          os.makedirs('shots', exist_ok=True)
+          def sh(*args, check=True):
+              return subprocess.run([ADB, *args], capture_output=True, text=True, check=check)
+          def dump():
+              sh('shell', 'uiautomator', 'dump', '/sdcard/ui.xml', check=False)
+              time.sleep(1)
+              sh('pull', '/sdcard/ui.xml', '/tmp/ui.xml', check=False)
+              try:
+                  return open('/tmp/ui.xml', encoding='utf-8').read()
+              except Exception:
+                  return ''
+          def nodes(xml):
+              out = []
+              for m in re.finditer(r'<node\b[^>]*>', xml):
+                  tag = m.group(0)
+                  tm = re.search(r'text="([^"]*)"', tag)
+                  dm = re.search(r'content-desc="([^"]*)"', tag)
+                  bm = re.search(r'bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', tag)
+                  if not bm: continue
+                  out.append((((tm.group(1) if tm else '') + ' ' + (dm.group(1) if dm else '')),
+                              tuple(int(bm.group(i)) for i in (1, 2, 3, 4))))
+              return out
+          def find(xml, *targets):
+              for val, b in nodes(xml):
+                  for t in targets:
+                      if t in val:
+                          return ((b[0]+b[2])//2, (b[1]+b[3])//2, t)
+              return None
+          def tap_node(loc):
+              sh('shell', 'input', 'tap', str(loc[0]), str(loc[1]))
+          def shot(name):
+              with open(f'shots/{name}.png', 'wb') as f:
+                  subprocess.run([ADB, 'exec-out', 'screencap', '-p'], stdout=f)
+          def launch():
+              sh('shell', 'monkey', '-p', PKG, '-c', 'android.intent.category.LAUNCHER', '1', check=False)
+          log = []
+          sh('install', '-r', 'bouga-13.apk')
+          sh('shell', 'pm', 'clear', PKG)
+          r = sh('shell', 'dumpsys', 'package', PKG, check=False)
+          m = re.search(r'versionCode=(\d+)', r.stdout)
+          log.append('INSTALLED_BEFORE=' + (m.group(1) if m else '?'))
+          sh('logcat', '-c')
+          launch(); time.sleep(14)
+          xml = dump()
+          skip = find(xml, 'تخطّي الجولة')
+          if skip:
+              shot('tour_shown_on_13')
+              tap_node(skip); time.sleep(4)
+          xml = dump()
+          log.append('HOME_ON_13=' + str(bool(find(xml, 'الإعدادات'))))
+          # Disposable fixture: add one link through the real share flow
+          sh('shell', 'am', 'start', '-a', 'android.intent.action.SEND', '-t', 'text/plain',
+             '--es', 'android.intent.extra.TEXT', 'شوف ده https://example.com/bouga-updater-fixture',
+             '-p', PKG, check=False)
+          time.sleep(6)
+          xml = dump()
+          if find(xml, 'إضافة رابط'):
+              shot('fixture_sheet')
+              save = find(xml, 'حفظ')
+              if save:
+                  tap_node(save); time.sleep(4)
+          xml = dump()
+          fixture = 'example.com' in xml
+          log.append('FIXTURE_LINK_VISIBLE=' + str(fixture))
+          shot('home_with_fixture')
+          # Settings -> check for updates
+          st = find(xml, 'الإعدادات')
+          if not st:
+              shot('no_settings_entry'); sys.exit('settings entry not found')
+          tap_node(st); time.sleep(5)
+          xml = dump()
+          upd = find(xml, 'تحديث التطبيق')
+          if not upd:
+              shot('settings_no_update_tile'); sys.exit('update tile not found')
+          tap_node(upd)
+          # wait for the update dialog (network fetch of live manifest)
+          got_dialog = False
+          for i in range(20):
+              time.sleep(3)
+              xml = dump()
+              if find(xml, 'تحديث جديد متاح'):
+                  got_dialog = True
+                  break
+              if find(xml, 'مُحدّث بالفعل', 'تعذر التحقق'):
+                  shot('unexpected_no_update'); sys.exit('unexpected no-update/error state')
+          if not got_dialog:
+              shot('no_update_dialog'); sys.exit('update dialog never appeared')
+          shot('update_dialog_5015_available')
+          now = find(xml, 'تحديث الآن')
+          tap_node(now)
+          # download (~20MB) then native handoff to package installer
+          prompt = None
+          for i in range(60):
+              time.sleep(4)
+              xml = dump()
+              prompt = find(xml, 'Install', 'تثبيت', 'INSTALL')
+              if prompt:
+                  break
+              if find(xml, 'تعذر تنزيل'):
+                  shot('download_failed'); sys.exit('download failed in-app')
+          if not prompt:
+              shot('no_install_prompt'); sys.exit('system install prompt never appeared')
+          shot('SYSTEM_INSTALL_PROMPT_7015')
+          tap_node(prompt)
+          for i in range(30):
+              time.sleep(3)
+              xml = dump()
+              done = find(xml, 'App installed', 'تم تثبيت التطبيق', 'تم التثبيت')
+              if done:
+                  shot('INSTALL_DONE')
+                  break
+          r = sh('shell', 'dumpsys', 'package', PKG, check=False)
+          m = re.search(r'versionCode=(\d+)', r.stdout)
+          after = m.group(1) if m else '?'
+          log.append('INSTALLED_AFTER=' + after)
+          launch(); time.sleep(10)
+          xml = dump()
+          kept = 'example.com' in xml
+          no_retour = not bool(find(xml, 'التالي', 'تخطّي الجولة'))
+          shot('home_after_update')
+          log.append('FIXTURE_KEPT_AFTER_UPDATE=' + str(kept))
+          log.append('TOUR_FLAG_KEPT=' + str(no_retour))
+          open('shots/updater_log.txt', 'w').write('\n'.join(log))
+          print('\n'.join(log))
+          r = sh('logcat', '-d', check=False)
+          open('shots/logcat.txt', 'w').write(r.stdout)
+          crashes = [l for l in r.stdout.splitlines() if 'FATAL' in l and PKG in l]
+          print('FATAL_HITS=' + str(len(crashes)))
+          if after != '7015':
+              sys.exit('upgrade not completed: versionCode=' + after)
+          PY
+      - name: Upload updater evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: updater-13-14-evidence
+          path: shots/
+          retention-days: 14
