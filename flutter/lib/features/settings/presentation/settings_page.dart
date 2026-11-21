@@ -3,24 +3,28 @@ import '../data/reminder_service.dart';
 import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import '../data/android_update_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/bouga_tokens.dart';
 import '../data/update_service.dart';
 
 class SettingsPage extends StatefulWidget {
-  const SettingsPage(
-      {super.key,
-      required this.onImportBackup,
-      required this.onExportBackup,
-      this.onReplayTour,
-      this.tourStart,
-      this.tourTotal});
+  const SettingsPage({
+    super.key,
+    required this.onImportBackup,
+    required this.onExportBackup,
+    this.onReplayTour,
+    this.tourStart,
+    this.tourTotal,
+    this.cloudSection,
+  });
 
   final Future<void> Function() onImportBackup;
   final Future<void> Function() onExportBackup;
   final Future<void> Function()? onReplayTour;
   final int? tourStart;
   final int? tourTotal;
+  final Widget? cloudSection;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -38,30 +42,32 @@ class _SettingsPageState extends State<SettingsPage> {
         target: _tourReminders,
         title: 'فكّر نفسك باللي محفوظ',
         text:
-            'التذكير للروابط اللي لسه ما اتفتحتش. تقدر تغيّر عدد الأيام أو تقفله، ولازم تسمح بالإشعارات. أندرويد ممكن يأخره حسب البطارية.'
+            'التذكير للروابط اللي لسه ما اتفتحتش. تقدر تغيّر عدد الأيام أو تقفله، ولازم تسمح بالإشعارات. أندرويد ممكن يأخره حسب البطارية.',
       ),
       (
         target: _tourBackup,
         title: 'خلي معاك نسخة',
         text:
-            'صدّر ملف JSON تحفظه في مكان آمن، أو استورد نسخة عندك. ده ملف محلي، مش نسخ تلقائي على جوجل.'
+            'صدّر ملف JSON تحفظه في مكان آمن، أو استورد نسخة عندك. ده ملف محلي، مش نسخ تلقائي على جوجل.',
       ),
       (
         target: _tourUpdate,
         title: 'التحديث من هنا',
         text:
-            'تحقّق من إصدار جديد وثبّته فوق النسخة المنفصلة من غير مسحها. خلصنا، وتقدر تعيد الجولة من إعدادات بؤجة.'
+            'تحقّق من إصدار جديد وثبّته فوق النسخة المنفصلة من غير مسحها. خلصنا، وتقدر تعيد الجولة من إعدادات بؤجة.',
       ),
     ];
     for (final step in steps) {
       if (!mounted) return;
-      final next = await showBougaTourStep(context,
-          target: step.target,
-          title: step.title,
-          text: step.text,
-          step: ++index,
-          total: widget.tourTotal!,
-          last: index == widget.tourTotal);
+      final next = await showBougaTourStep(
+        context,
+        target: step.target,
+        title: step.title,
+        text: step.text,
+        step: ++index,
+        total: widget.tourTotal!,
+        last: index == widget.tourTotal,
+      );
       if (!next) break;
     }
     if (mounted) Navigator.of(context).pop();
@@ -98,7 +104,8 @@ class _SettingsPageState extends State<SettingsPage> {
       setState(() => _reminderSettings = value);
       if (enabled && !value.enabled) {
         _showMessage(
-            'الإشعارات مقفولة. اسمح لبؤجة بالإشعارات من إعدادات الموبايل.');
+          'الإشعارات مقفولة. اسمح لبؤجة بالإشعارات من إعدادات الموبايل.',
+        );
       }
     } catch (_) {
       if (mounted) _showMessage('تعذر حفظ التذكير، حاول تاني.');
@@ -138,9 +145,9 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _showUpdateDialog(UpdateManifest manifest) async {
@@ -181,32 +188,37 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _downloadUpdate(UpdateManifest manifest) async {
     final progress = ValueNotifier<double?>(null);
-    unawaited(showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          title: const Text('جارٍ تنزيل التحديث'),
-          content: ValueListenableBuilder<double?>(
-            valueListenable: progress,
-            builder: (_, value, child) => Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                LinearProgressIndicator(value: value),
-                const SizedBox(height: 16),
-                const Text(
-                    'بعد التحقق من الملف هتفتح شاشة تثبيت أندرويد. وافق على التثبيت من المصدر ده لو طلب منك. بياناتك بتفضل زي ما هي، ما تمسحش التطبيق.')
-              ],
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => PopScope(
+          canPop: false,
+          child: AlertDialog(
+            title: const Text('جارٍ تنزيل التحديث'),
+            content: ValueListenableBuilder<double?>(
+              valueListenable: progress,
+              builder: (_, value, child) => Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  LinearProgressIndicator(value: value),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'بعد التحقق من الملف هتفتح شاشة تثبيت أندرويد. وافق على التثبيت من المصدر ده لو طلب منك. بياناتك بتفضل زي ما هي، ما تمسحش التطبيق.',
+                  ),
+                ],
+              ),
             ),
           ),
         ),
       ),
-    ));
+    );
     String? error;
     try {
-      await AndroidUpdateService()
-          .downloadAndInstall(manifest, (value) => progress.value = value);
+      await AndroidUpdateService().downloadAndInstall(
+        manifest,
+        (value) => progress.value = value,
+      );
     } catch (_) {
       error =
           'تعذر تنزيل أو فتح التحديث. اتأكد من الإنترنت وجرّب تاني. ما تمسحش التطبيق.';
@@ -242,57 +254,78 @@ class _SettingsPageState extends State<SettingsPage> {
           children: [
             if (widget.onReplayTour != null)
               Card(
-                  child: ListTile(
-                      leading: const Icon(Icons.explore_outlined,
-                          color: BougaColors.gold),
-                      title: const Text('إعادة جولة الشرح'),
-                      onTap: () => widget.onReplayTour!())),
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.explore_outlined,
+                    color: BougaColors.gold,
+                  ),
+                  title: const Text('إعادة جولة الشرح'),
+                  onTap: () => widget.onReplayTour!(),
+                ),
+              ),
             const _SectionTitle('تذكير الروابط'),
             Card(
-                child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          SwitchListTile(
-                              key: _tourReminders,
-                              contentPadding: EdgeInsets.zero,
-                              title: const Text('فكّرني باللي لسه ما اتفتحش'),
-                              value: _reminderSettings.enabled,
-                              onChanged:
-                                  !_reminders.supported || _savingReminders
-                                      ? null
-                                      : (value) => _saveReminders(
-                                          value, _reminderSettings.days)),
-                          const Text('بعد كام يوم من الحفظ؟'),
-                          const SizedBox(height: 8),
-                          DropdownButtonFormField<int>(
-                              initialValue: _reminderSettings.days,
-                              decoration: const InputDecoration(
-                                  contentPadding: EdgeInsets.symmetric(
-                                      horizontal: 16, vertical: 14)),
-                              items: [1, 2, 3, 7, 14, 30]
-                                  .map((days) => DropdownMenuItem(
-                                      value: days, child: Text('$days أيام')))
-                                  .toList(),
-                              onChanged: !_reminders.supported ||
-                                      _savingReminders
-                                  ? null
-                                  : (days) {
-                                      if (days != null) {
-                                        _saveReminders(
-                                            _reminderSettings.enabled, days);
-                                      }
-                                    }),
-                          const SizedBox(height: 12),
-                          const Text(
-                              'تذكير محلي مجمّع، مرة واحدة لكل رابط. المراجعة يوميًا حوالي ١٠ صباحًا، وممكن تتأخر حسب البطارية. الروابط القديمة اللي مش معروف اتفتحت ولا لأ مش بتدخل في التذكير.',
-                              style: TextStyle(
-                                  color: BougaColors.muted, fontSize: 12)),
-                          if (!_reminders.supported)
-                            const Text('التذكير متاح في نسخة أندرويد.'),
-                          if (_savingReminders) const LinearProgressIndicator(),
-                        ]))),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SwitchListTile(
+                      key: _tourReminders,
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('فكّرني باللي لسه ما اتفتحش'),
+                      value: _reminderSettings.enabled,
+                      onChanged: !_reminders.supported || _savingReminders
+                          ? null
+                          : (value) =>
+                              _saveReminders(value, _reminderSettings.days),
+                    ),
+                    const Text('بعد كام يوم من الحفظ؟'),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<int>(
+                      initialValue: _reminderSettings.days,
+                      decoration: const InputDecoration(
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
+                      ),
+                      items: [1, 2, 3, 7, 14, 30]
+                          .map(
+                            (days) => DropdownMenuItem(
+                              value: days,
+                              child: Text('$days أيام'),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: !_reminders.supported || _savingReminders
+                          ? null
+                          : (days) {
+                              if (days != null) {
+                                _saveReminders(
+                                  _reminderSettings.enabled,
+                                  days,
+                                );
+                              }
+                            },
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'تذكير محلي مجمّع، مرة واحدة لكل رابط. المراجعة يوميًا حوالي ١٠ صباحًا، وممكن تتأخر حسب البطارية. الروابط القديمة اللي مش معروف اتفتحت ولا لأ مش بتدخل في التذكير.',
+                      style: TextStyle(color: BougaColors.muted, fontSize: 12),
+                    ),
+                    if (!_reminders.supported)
+                      const Text('التذكير متاح في نسخة أندرويد.'),
+                    if (_savingReminders) const LinearProgressIndicator(),
+                  ],
+                ),
+              ),
+            ),
+            if (widget.cloudSection != null) ...[
+              const SizedBox(height: 24),
+              const _SectionTitle('الحساب والنسخ السحابي'),
+              widget.cloudSection!,
+            ],
             const SizedBox(height: 24),
             const _SectionTitle('النسخ الاحتياطي'),
             Card(
@@ -307,8 +340,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     subtitle: const Text(
                       'استرجع روابطك وتصنيفاتك من ملف نسخة بُؤجة.',
                     ),
-                    trailing: const Icon(Icons.chevron_left,
-                        textDirection: TextDirection.ltr),
+                    trailing: const Icon(
+                      Icons.chevron_left,
+                      textDirection: TextDirection.ltr,
+                    ),
                     onTap: widget.onImportBackup,
                   ),
                   const Divider(height: 1, indent: 16, endIndent: 16),
@@ -320,8 +355,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     subtitle: const Text(
                       'احفظ نسخة JSON من روابطك وبياناتك على جهازك.',
                     ),
-                    trailing: const Icon(Icons.chevron_left,
-                        textDirection: TextDirection.ltr),
+                    trailing: const Icon(
+                      Icons.chevron_left,
+                      textDirection: TextDirection.ltr,
+                    ),
                     onTap: widget.onExportBackup,
                   ),
                 ],
@@ -343,29 +380,49 @@ class _SettingsPageState extends State<SettingsPage> {
                         height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.chevron_left,
-                        textDirection: TextDirection.ltr),
+                    : const Icon(
+                        Icons.chevron_left,
+                        textDirection: TextDirection.ltr,
+                      ),
                 onTap: _checkingUpdates ? null : _checkForUpdates,
               ),
             ),
             const SizedBox(height: 24),
             const _SectionTitle('عن بُؤجة'),
-            const Card(
+            Card(
               child: Column(
                 children: [
-                  ListTile(
+                  const ListTile(
                     leading: CircleAvatar(
                       child: Icon(Icons.inventory_2_outlined),
                     ),
                     title: Text('BOUGA | بُؤجة'),
                     subtitle: Text('كل اللي يهمك.. في بُؤجة واحدة.'),
                   ),
-                  Divider(height: 1, indent: 16, endIndent: 16),
-                  ListTile(
+                  const Divider(height: 1, indent: 16, endIndent: 16),
+                  const ListTile(
                     leading: Icon(Icons.info_outline, color: BougaColors.mint),
                     title: Text('الإصدار'),
-                    subtitle:
-                        Text('النسخة المنفصلة • تحديثاتها من الزر الموجود فوق'),
+                    subtitle: Text(
+                      'النسخة المنفصلة • تحديثاتها من الزر الموجود فوق',
+                    ),
+                  ),
+                  const Divider(height: 1, indent: 16, endIndent: 16),
+                  ListTile(
+                    leading: const Icon(
+                      Icons.telegram,
+                      color: BougaColors.mint,
+                    ),
+                    title: const Text('تواصل معنا'),
+                    subtitle: const Text('قناة بُؤجة على تيليجرام'),
+                    trailing: const Icon(
+                      Icons.chevron_left,
+                      textDirection: TextDirection.ltr,
+                    ),
+                    onTap: () => launchUrl(
+                      Uri.parse('https://t.me/cadr_tech'),
+                      mode: LaunchMode.externalApplication,
+                    ),
                   ),
                 ],
               ),
