@@ -44,6 +44,11 @@ jobs:
             echo "Generated Android app Gradle file not found" >&2
             exit 1
           fi
+      - name: Configure Android incoming text sharing
+        run: |
+          python3 tool/test_reminders.py
+          python3 tool/configure_incoming_share.py
+          python3 tool/configure_reminders.py
       - name: Install dependencies
         run: flutter pub get
       - name: Build debug APK
@@ -172,6 +177,16 @@ jobs:
             echo "PACKAGE=com.hafeza.bouga (debug screen-check identity)"
           } > shots/results.txt
           cat shots/results.txt
+      - name: Verify share target resolves and receives text
+        run: |
+          adb shell cmd package resolve-activity -a android.intent.action.SEND -t text/plain > /tmp/resolve.txt || true
+          cat /tmp/resolve.txt
+          grep -q 'com.hafeza.bouga' /tmp/resolve.txt
+          adb shell am start -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT 'https://youtu.be/ci-share-probe' -n com.hafeza.bouga/.MainActivity
+          sleep 6
+          adb exec-out screencap -p > shots/00_share_receive.png
+          adb shell input keyevent 4
+          sleep 2
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
@@ -259,7 +274,11 @@ jobs:
           python3 tool/configure_incoming_share.py
           python3 tool/configure_reminders.py
           grep -q 'android.intent.action.SEND' android/app/src/main/AndroidManifest.xml
+          grep -q 'BougaReminderReceiver' android/app/src/main/AndroidManifest.xml
+          grep -q 'androidx.core.content.FileProvider' android/app/src/main/AndroidManifest.xml
           grep -q 'bouga/incoming_share' android/app/src/main/kotlin/com/hafeza/bouga/MainActivity.kt
+          grep -q 'bouga/reminders' android/app/src/main/kotlin/com/hafeza/bouga/MainActivity.kt
+          grep -q 'bouga/updates' android/app/src/main/kotlin/com/hafeza/bouga/MainActivity.kt
       - name: Install dependencies
         run: flutter pub get
       - name: Reconstruct encrypted trial keystore in runner temp
@@ -339,10 +358,10 @@ jobs:
           test -n "${BOUGA_KEYSTORE_PATH:-}"
           test -s "$BOUGA_KEYSTORE_PATH"
           test -n "$BOUGA_SIGNING_PASSWORD"
-          # Build-number 3014 mirrors the production 3000+run scheme and puts
-          # the arm64 split at 5014, above the installed trial 5013, so the
-          # artifact is install-eligible. Artifact-only: never published.
-          flutter build apk --release --split-per-abi --build-number 3014
+          # Build-number 3015 mirrors the production 3000+run scheme and puts
+          # the arm64 split at 5015, above the installed trial 5014, so the
+          # artifact is install-eligible and update-deliverable.
+          flutter build apk --release --split-per-abi --build-number 3015
           compgen -G "build/app/outputs/flutter-apk/app-*-release.apk" >/dev/null
       - name: Verify package, signature, size
         run: |
