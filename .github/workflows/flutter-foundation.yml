@@ -1,7 +1,7 @@
 name: BOUGA Flutter foundation
 on:
   push:
-    branches: [migration/flutter-foundation]
+    branches: [migration/flutter-foundation, feature/google-drive-backup]
   pull_request:
     branches: [migration/flutter-foundation]
     paths:
