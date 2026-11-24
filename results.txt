@@ -1,0 +1,2 @@
+CRASH_HITS=0
+PACKAGE=com.hafeza.bouga (debug screen-check identity)
