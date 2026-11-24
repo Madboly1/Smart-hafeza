@@ -530,10 +530,10 @@ jobs:
           test -n "${BOUGA_KEYSTORE_PATH:-}"
           test -s "$BOUGA_KEYSTORE_PATH"
           test -n "$BOUGA_SIGNING_PASSWORD"
-          # Build-number 3015 mirrors the production 3000+run scheme and puts
-          # the arm64 split at 5015, above the installed trial 5014, so the
+          # Build-number 3016 mirrors the production 3000+run scheme and puts
+          # the arm64 split at 5016, above the published 1.0.14 (5015), so the
           # artifact is install-eligible and update-deliverable.
-          flutter build apk --release --split-per-abi --build-number 3015 --build-name "1.0.14"
+          flutter build apk --release --split-per-abi --build-number 3016 --build-name "1.0.15"
           compgen -G "build/app/outputs/flutter-apk/app-*-release.apk" >/dev/null
       - name: Verify package, signature, size
         run: |
@@ -571,3 +571,237 @@ jobs:
           path: flutter/build/app/outputs/flutter-apk/app-*-release.apk
           if-no-files-found: error
 # test build of 45f8b5a fixes
+
+
+  upgrade-check:
+    needs: signed-build-only
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+      - name: Install emulator image
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "emulator" "system-images;android-31;google_apis;x86_64"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/emulator" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+      - name: Create and boot AVD
+        run: |
+          export ANDROID_SDK_HOME="$HOME"
+          export ANDROID_AVD_HOME="\${ANDROID_AVD_HOME:-$HOME/.android/avd}"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo no | avdmanager create avd -n acct -k "system-images;android-31;google_apis;x86_64" --device "pixel_5" --force
+          CFG="$ANDROID_AVD_HOME/acct.avd/config.ini"
+          if [ ! -f "$CFG" ]; then
+            CFG=$(find "$HOME" /usr/local/lib/android -maxdepth 6 -path "*acct.avd/config.ini" 2>/dev/null | head -1)
+          fi
+          if [ -z "$CFG" ] || [ ! -f "$CFG" ]; then
+            echo "acct AVD config.ini not found"; exit 1
+          fi
+          export ANDROID_AVD_HOME="$(dirname "$(dirname "$CFG")")"
+          echo "hw.ramSize=3072" >> "$CFG"
+          echo "disk.dataPartition.size=4G" >> "$CFG"
+          nohup emulator -avd acct -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot-save -memory 3072 > /tmp/emulator.log 2>&1 &
+          adb wait-for-device
+          for i in $(seq 1 120); do
+            BOOT=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+            if [ "$BOOT" = "1" ]; then echo "booted after $((i*5))s"; break; fi
+            sleep 5
+          done
+          if [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" != "1" ]; then
+            echo "EMULATOR BOOT TIMEOUT"; tail -50 /tmp/emulator.log || true; exit 1
+          fi
+      - name: Download candidate APKs from this run
+        uses: actions/download-artifact@v4
+        with:
+          name: bouga-signed-trial-no-ota
+          path: cand
+      - name: Download published 1.0.14 x86_64 APK and verify against its manifest
+        run: |
+          set -euo pipefail
+          BASE=https://github.com/Madboly1/Smart-hafeza/releases/download/bouga-isolated-14
+          curl -fsSL -o old.apk "$BASE/app-x86_64-release.apk"
+          curl -fsSL -o old.json "$BASE/update-x86_64.json"
+          WANT=$(python3 -c "import json;print(json.load(open('old.json'))['sha256'])")
+          HAVE=$(sha256sum old.apk | cut -d' ' -f1)
+          echo "WANT=$WANT HAVE=$HAVE"
+          test "$WANT" = "$HAVE"
+          python3 -c "import json;d=json.load(open('old.json'));print(d['versionCode'],d['versionName'],d['packageName'])"
+          ls -l cand old.apk
+      - name: Upgrade 1.0.14 to candidate with seeded data
+        run: |
+          set -euo pipefail
+          mkdir -p shots
+          P=com.hafeza.links.trial
+          BT=$(ls "$ANDROID_HOME/build-tools/" | sort -V | tail -1)
+          OLD_CERT=$("$ANDROID_HOME/build-tools/$BT/apksigner" verify --print-certs old.apk | grep -m1 'SHA-256 digest')
+          NEW_CERT=$("$ANDROID_HOME/build-tools/$BT/apksigner" verify --print-certs cand/app-x86_64-release.apk | grep -m1 'SHA-256 digest')
+          echo "OLD $OLD_CERT"
+          echo "NEW $NEW_CERT"
+          test "$OLD_CERT" = "$NEW_CERT"
+          tap_text() {
+            adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+            adb pull /sdcard/ui.xml ui.xml >/dev/null 2>&1
+            python3 - "$1" <<'PY' > /tmp/tap.txt
+          import re, sys
+          target = sys.argv[1]
+          xml = open('ui.xml', encoding='utf-8').read()
+          for m in re.finditer(r'<node\b[^>]*>', xml):
+              tag = m.group(0)
+              tm = re.search(r'text="([^"]*)"', tag)
+              dm = re.search(r'content-desc="([^"]*)"', tag)
+              bm = re.search(r'bounds="\\[(\d+),(\d+)\\]\\[(\d+),(\d+)\\]"', tag)
+              if not bm:
+                  continue
+              val = (tm.group(1) if tm else '') + ' ' + (dm.group(1) if dm else '')
+              if target in val:
+                  print((int(bm.group(1)) + int(bm.group(3))) // 2, (int(bm.group(2)) + int(bm.group(4))) // 2)
+                  break
+          PY
+          }
+          try_tap() {
+            : > /tmp/tap.txt
+            tap_text "$1"
+            read X Y < /tmp/tap.txt || true
+            if [ -n "\${X:-}" ]; then adb shell input tap $X $Y; unset X Y; return 0; fi
+            unset X Y; return 1
+          }
+          ui_has() {
+            adb shell uiautomator dump /sdcard/u.xml >/dev/null 2>&1
+            adb pull /sdcard/u.xml u.xml >/dev/null 2>&1
+            grep -q "$1" u.xml
+          }
+          shot() { adb exec-out screencap -p > "shots/$1.png"; }
+          adb install -r old.apk
+          adb shell pm clear "$P"
+          adb shell dumpsys package "$P" | grep -E 'versionCode=|versionName=' | tee shots/before_version.txt
+          grep -q 'versionName=1.0.14' shots/before_version.txt
+          adb logcat -c
+          adb shell monkey -p "$P" -c android.intent.category.LAUNCHER 1
+          sleep 15
+          for i in 1 2 3; do try_tap "تخطّي الجولة" || true; sleep 2; done
+          try_tap "المجموعات" || true
+          sleep 3
+          try_tap "مجموعة جديدة" || true
+          sleep 2
+          try_tap "اسم المجموعة" || true
+          sleep 1
+          adb shell input text UPGGROUP
+          try_tap "إنشاء" || true
+          sleep 3
+          shot 31_old_groups_seeded
+          ui_has "UPGGROUP"
+          try_tap "الرئيسية" || true
+          sleep 2
+          adb shell am start -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT 'https://example.com/bouga-upgrade-seed' -p "$P"
+          sleep 6
+          try_tap "حفظ" || true
+          sleep 3
+          shot 30_old_home_seeded
+          ui_has "bouga-upgrade-seed"
+          adb shell am force-stop "$P"
+          adb install -r cand/app-x86_64-release.apk
+          adb shell dumpsys package "$P" | grep -E 'versionCode=|versionName=' | tee shots/after_version.txt
+          grep -q 'versionName=1.0.15' shots/after_version.txt
+          grep -q 'versionCode=7016' shots/after_version.txt
+          adb logcat -c
+          adb shell monkey -p "$P" -c android.intent.category.LAUNCHER 1
+          sleep 15
+          shot 32_new_home_after_upgrade
+          ui_has "bouga-upgrade-seed"
+          try_tap "المجموعات" || true
+          sleep 3
+          shot 33_new_groups_after_upgrade
+          ui_has "UPGGROUP"
+          adb logcat -d > shots/logcat_after.txt || true
+          if grep -A3 'FATAL EXCEPTION' shots/logcat_after.txt | grep -q "Process: $P"; then echo "CRASH AFTER UPGRADE"; exit 1; fi
+          echo "UPGRADE OK: data preserved, no crash"
+      - name: Upload upgrade screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bouga-upgrade-shots
+          path: shots/
+      - name: Push upgrade shots to evidence branch
+        if: always()
+        run: |
+          set -e
+          BR="bouga-upgrade-evidence-r\${{ github.run_id }}"
+          mkdir -p /tmp/ev
+          cp shots/* /tmp/ev/ 2>/dev/null || true
+          cd /tmp/ev
+          git init -b "$BR" .
+          git config user.email "ci@bouga.local"
+          git config user.name "bouga-account-ci"
+          git add .
+          git commit -m "Bouga upgrade evidence for run \${{ github.run_id }} (head \${{ github.sha }})" || true
+          PUSH_URL="https://x-access-token:\${{ secrets.GITHUB_TOKEN }}@github.com/\${{ github.repository }}.git"
+          git push "$PUSH_URL" "$BR:$BR"
+
+  publish:
+    # Runs only after the signed build and the upgrade check both passed, and
+    # only for a push whose commit message contains the exact publish marker.
+    # Ordinary pushes never publish.
+    needs: [signed-build-only, upgrade-check]
+    if: \${{ github.event_name == 'push' && contains(github.event.head_commit.message, 'PUBLISH bouga-isolated-15') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Refuse when the release tag already exists
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          if gh release view bouga-isolated-15 --repo Madboly1/Smart-hafeza >/dev/null 2>&1; then
+            echo "Release bouga-isolated-15 already exists"; exit 1
+          fi
+      - name: Download candidate APKs from this run
+        uses: actions/download-artifact@v4
+        with:
+          name: bouga-signed-trial-no-ota
+          path: cand
+      - name: Verify signature and package, then write update manifests
+        run: |
+          set -euo pipefail
+          export BT=$(ls "$ANDROID_HOME/build-tools/" | sort -V | tail -1)
+          python3 - <<'PY'
+          import hashlib, json, os, re, subprocess
+          bt = os.path.join(os.environ['ANDROID_HOME'], 'build-tools', os.environ['BT'])
+          expected = 'A89E8C20339230D6673A87C0025CF8D5E3E909CC'
+          message = 'تحديث 1.0.15: زرار مجموعة جديدة فوق في صفحة المجموعات، واختيار المجموعة من قائمة منسدلة، وقائمة التلات نقط (فتح، نسخ، تعديل، حذف)، وتأكيد قبل الحذف، والمجموعات الأحدث أولًا، وتنبيه أحمر للرابط المحفوظ قبل كده، ومسافات أوضح بين الحقول.'
+          offsets = {'armeabi-v7a': 1000, 'arm64-v8a': 2000, 'x86_64': 4000}
+          for abi, off in offsets.items():
+              apk = 'cand/app-%s-release.apk' % abi
+              cert = subprocess.check_output([os.path.join(bt, 'apksigner'), 'verify', '--print-certs', apk], text=True)
+              sha1 = re.search(r'SHA-1 digest: ([0-9a-fA-F]+)', cert).group(1).upper()
+              assert sha1 == expected, 'signature mismatch'
+              meta = subprocess.check_output([os.path.join(bt, 'aapt'), 'dump', 'badging', apk], text=True)
+              assert "name='com.hafeza.links.trial'" in meta
+              code = int(re.search(r"versionCode='(\d+)'", meta).group(1))
+              assert code == 3016 + off, code
+              manifest = {
+                  'versionCode': code,
+                  'versionName': '1.0.15',
+                  'releaseMessage': message,
+                  'apkUrl': 'https://github.com/Madboly1/Smart-hafeza/releases/download/bouga-isolated-15/app-%s-release.apk' % abi,
+                  'sha256': hashlib.sha256(open(apk, 'rb').read()).hexdigest(),
+                  'packageName': 'com.hafeza.links.trial',
+                  'certificateSha256': '5abedd4dafc3df4a732f97aa27af7aeb6df24c452ac5d2af8b5f4e2b4db97d3d',
+              }
+              json.dump(manifest, open('cand/update-%s.json' % abi, 'w', encoding='utf-8'), ensure_ascii=True, indent=2)
+              print(abi, code, 'ok')
+          PY
+          ls -l cand
+      - name: Create the release (latest) from this commit
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create bouga-isolated-15 cand/app-*-release.apk cand/update-*.json --repo Madboly1/Smart-hafeza --target "$GITHUB_SHA" --latest --title "بُؤجة المنفصل 1.0.15" --notes "تحديث 1.0.15 للنسخة المنفصلة (com.hafeza.links.trial): زرار مجموعة جديدة فوق، اختيار المجموعة من قائمة، قائمة التلات نقط (فتح، نسخ، تعديل، حذف)، تأكيد قبل الحذف، المجموعات الأحدث أولًا، تنبيه أحمر للرابط المحفوظ، ومسافات أوضح. نفس التوقيع ونفس الحزمة، وبياناتك محفوظة."
