@@ -818,3 +818,4 @@ jobs:
         run: |
           set -euo pipefail
           gh release create bouga-isolated-15 cand/app-*-release.apk cand/update-*.json --repo Madboly1/Smart-hafeza --target "$GITHUB_SHA" --latest --title "بُؤجة المنفصل 1.0.15" --notes "تحديث 1.0.15 للنسخة المنفصلة (com.hafeza.links.trial): زرار مجموعة جديدة فوق، اختيار المجموعة من قائمة، قائمة التلات نقط (فتح، نسخ، تعديل، حذف)، تأكيد قبل الحذف، المجموعات الأحدث أولًا، تنبيه أحمر للرابط المحفوظ، ومسافات أوضح. نفس التوقيع ونفس الحزمة، وبياناتك محفوظة."
+# release trigger: bouga-isolated-15
