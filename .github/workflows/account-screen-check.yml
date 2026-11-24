@@ -748,12 +748,26 @@ jobs:
     # Runs only after the signed build and the upgrade check both passed, and
     # only for a push whose commit message contains the exact publish marker.
     # Ordinary pushes never publish.
-    needs: [signed-build-only, upgrade-check]
+    needs: [account-screens, signed-build-only, upgrade-check]
     if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, 'PUBLISH bouga-isolated-15') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
     steps:
+      - name: Require the Flutter foundation CI (analyze, tests, builds) to pass for this exact commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            RESULT=$(gh run list --repo Madboly1/Smart-hafeza --workflow "BOUGA Flutter foundation" --commit "$GITHUB_SHA" --json status,conclusion --jq '.[0] | (.status + ":" + (.conclusion // ""))' || true)
+            echo "foundation CI for $GITHUB_SHA: ${RESULT:-none}"
+            if [ "$RESULT" = "completed:success" ]; then exit 0; fi
+            case "$RESULT" in completed:*) echo "Foundation CI did not succeed"; exit 1;; esac
+            sleep 30
+          done
+          echo "Foundation CI did not finish in time"; exit 1
       - name: Refuse when the release tag already exists
         env:
           GH_TOKEN: ${{ github.token }}
