@@ -249,6 +249,24 @@ class BougaDatabase {
     );
   }
 
+  Future<int> _nextCategorySortOrder() async {
+    final rows = await _database.rawQuery(
+      'SELECT MIN(sort_order) AS min_order FROM categories',
+    );
+    final minimum = rows.first['min_order'] as int?;
+    return (minimum ?? 0) - 1;
+  }
+
+  Future<void> _ensureCategory(String category) async {
+    final value = category.trim();
+    if (value.isEmpty) return;
+    await _database.insert(
+      'categories',
+      {'name': value, 'sort_order': await _nextCategorySortOrder()},
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+
   Future<List<String>> getCategories() async {
     final rows =
         await _database.query('categories', orderBy: 'sort_order, name');
@@ -295,11 +313,7 @@ class BougaDatabase {
       'extra_json': '{}',
       'open_state': 'unopened',
     });
-    if (category.trim().isNotEmpty) {
-      await _database.insert(
-          'categories', {'name': category, 'sort_order': 999},
-          conflictAlgorithm: ConflictAlgorithm.ignore);
-    }
+    await _ensureCategory(category);
     return 1;
   }
 
@@ -319,11 +333,7 @@ class BougaDatabase {
         },
         where: 'id = ?',
         whereArgs: [id]);
-    if (category.trim().isNotEmpty) {
-      await _database.insert(
-          'categories', {'name': category, 'sort_order': 999},
-          conflictAlgorithm: ConflictAlgorithm.ignore);
-    }
+    await _ensureCategory(category);
   }
 
   Future<void> addCategory(String name) async {
@@ -331,8 +341,7 @@ class BougaDatabase {
     if (value.isEmpty || value.length > 60) {
       throw const FormatException('اسم المجموعة من 1 إلى 60 حرف.');
     }
-    await _database.insert('categories', {'name': value, 'sort_order': 999},
-        conflictAlgorithm: ConflictAlgorithm.ignore);
+    await _ensureCategory(value);
   }
 
   Future<void> markOpened(String id) async {

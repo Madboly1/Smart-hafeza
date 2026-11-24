@@ -81,6 +81,14 @@ void main() {
     await temp.delete(recursive: true);
   });
 
+  test('newly created groups are returned newest first', () async {
+    await database.addCategory('A');
+    await database.addCategory('B');
+    await database.addCategory('C');
+
+    expect(await database.getCategories(), ['C', 'B', 'A']);
+  });
+
   test('fresh groups are empty and users create their own without fixed seeds',
       () async {
     expect(await database.getCategories(), isEmpty);

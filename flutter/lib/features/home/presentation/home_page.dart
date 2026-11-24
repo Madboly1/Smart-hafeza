@@ -510,104 +510,153 @@ class _HomePageState extends State<HomePage> {
   Future<void> _add({String? sharedUrl, String? group}) async {
     final url = TextEditingController(text: sharedUrl);
     final title = TextEditingController();
-    final category = TextEditingController(
-      text: group ?? (_category == 'الكل' ? '' : _category),
-    );
+    var selectedCategory = group ?? (_category == 'الكل' ? '' : _category);
     final form = GlobalKey<FormState>();
     final save = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('إضافة رابط'),
-        content: Form(
-          key: form,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: url,
-                keyboardType: TextInputType.url,
-                decoration: const InputDecoration(labelText: 'الرابط'),
-                validator: (v) {
-                  final parsed = Uri.tryParse(v?.trim() ?? '');
-                  return parsed != null &&
-                          parsed.hasAuthority &&
-                          (parsed.scheme == 'https' || parsed.scheme == 'http')
-                      ? null
-                      : 'اكتب رابط صحيح يبدأ بـ https://';
-                },
-              ),
-              TextField(
-                controller: title,
-                decoration: const InputDecoration(
-                  labelText: 'العنوان (اختياري)',
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, dialogSetState) => AlertDialog(
+          title: const Text('إضافة رابط'),
+          content: Form(
+            key: form,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: url,
+                  keyboardType: TextInputType.url,
+                  decoration: const InputDecoration(labelText: 'الرابط'),
+                  validator: (v) {
+                    final parsed = Uri.tryParse(v?.trim() ?? '');
+                    return parsed != null &&
+                            parsed.hasAuthority &&
+                            (parsed.scheme == 'https' || parsed.scheme == 'http')
+                        ? null
+                        : 'اكتب رابط صحيح يبدأ بـ https://';
+                  },
                 ),
-              ),
-              if (_categories.isNotEmpty)
-                Wrap(
-                  spacing: 6,
-                  children: _categories
-                      .map(
-                        (c) => ActionChip(
-                          label: Text(c),
-                          onPressed: () => category.text = c,
+                const SizedBox(height: 14),
+                TextField(
+                  controller: title,
+                  decoration: const InputDecoration(
+                    labelText: 'العنوان (اختياري)',
+                  ),
+                ),
+                const SizedBox(height: 14),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedCategory,
+                  isExpanded: true,
+                  menuMaxHeight: 320,
+                  decoration: const InputDecoration(
+                    labelText: 'المجموعة (اختياري)',
+                  ),
+                  items: [
+                    const DropdownMenuItem(
+                      value: '',
+                      child: Text('بدون مجموعة'),
+                    ),
+                    ..._categories.map(
+                      (category) => DropdownMenuItem(
+                        value: category,
+                        child: Text(
+                          category,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      )
-                      .toList(),
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    dialogSetState(() => selectedCategory = value ?? '');
+                  },
                 ),
-              TextField(
-                controller: category,
-                decoration: const InputDecoration(
-                  labelText: 'المجموعة (اختياري)',
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (form.currentState!.validate()) {
+                  Navigator.pop(dialogContext, true);
+                }
+              },
+              child: const Text('حفظ'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('إلغاء'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (form.currentState!.validate()) {
-                Navigator.pop(context, true);
-              }
-            },
-            child: const Text('حفظ'),
-          ),
-        ],
       ),
     );
     if (save == true) {
       final added = await _repo!.add(
         url: url.text,
         title: title.text,
-        category: category.text.trim(),
+        category: selectedCategory,
         kind: 'رابط',
       );
       await _refresh();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              added == 0 ? 'الرابط محفوظ بالفعل' : 'اتحفظ في بُؤجة',
-            ),
-          ),
+          added == 0
+              ? SnackBar(
+                  backgroundColor: BougaColors.danger,
+                  duration: const Duration(seconds: 5),
+                  content: const Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded, color: Colors.white),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text('الرابط ده محفوظ قبل كده، ماتضافش تاني'),
+                      ),
+                    ],
+                  ),
+                )
+              : const SnackBar(content: Text('اتحفظ في بُؤجة')),
         );
       }
     }
     url.dispose();
     title.dispose();
-    category.dispose();
+  }
+
+  Future<bool> _confirmDelete() async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('حذف الرابط؟'),
+            content: const Text('متأكد إنك عايز تمسحه؟'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('إلغاء'),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: BougaColors.danger,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('حذف'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Future<void> _deleteLink(Map<String, Object?> item) async {
+    if (!await _confirmDelete()) return;
+    await _repo!.delete(item['id'].toString());
+    await _refresh();
   }
 
   Future<void> _details(Map<String, Object?> item) async {
     final id = item['id'].toString();
     final title = TextEditingController(text: item['title']?.toString() ?? '');
-    final category = TextEditingController(
-      text: item['category']?.toString() ?? 'أخرى',
-    );
+    var selectedCategory = item['category']?.toString() ?? '';
     final note = TextEditingController(text: item['note']?.toString() ?? '');
     var progress = (item['progress'] as int? ?? 0).clamp(0, 100);
     final remove = await showModalBottomSheet<bool>(
@@ -633,6 +682,7 @@ class _HomePageState extends State<HomePage> {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
+                const SizedBox(height: 14),
                 OutlinedButton.icon(
                   onPressed: () async {
                     final rawUrl = item['url']?.toString() ?? '';
@@ -665,33 +715,54 @@ class _HomePageState extends State<HomePage> {
                         'تعذر فتح الرابط. حاول مرة أخرى.',
                     };
                     if (message != null) {
-                      ScaffoldMessenger.of(
-                        context,
-                      ).showSnackBar(SnackBar(content: Text(message)));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(message)),
+                      );
                     }
                   },
                   icon: const Icon(Icons.open_in_new),
                   label: const Text('فتح الرابط'),
                 ),
+                const SizedBox(height: 14),
                 TextField(
                   controller: title,
-                  decoration: const InputDecoration(
-                    labelText: 'العنوان',
-                  ),
+                  decoration: const InputDecoration(labelText: 'العنوان'),
                 ),
-                TextField(
-                  controller: category,
+                const SizedBox(height: 14),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedCategory,
+                  isExpanded: true,
+                  menuMaxHeight: 320,
                   decoration: const InputDecoration(
                     labelText: 'المجموعة (اختياري)',
                   ),
+                  items: [
+                    const DropdownMenuItem(
+                      value: '',
+                      child: Text('بدون مجموعة'),
+                    ),
+                    ..._categories.map(
+                      (category) => DropdownMenuItem(
+                        value: category,
+                        child: Text(
+                          category,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    modalSet(() => selectedCategory = value ?? '');
+                  },
                 ),
+                const SizedBox(height: 14),
                 TextField(
                   controller: note,
                   maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: 'ملاحظات',
-                  ),
+                  decoration: const InputDecoration(labelText: 'ملاحظات'),
                 ),
+                const SizedBox(height: 14),
                 Text('التقدم: $progress%'),
                 Slider(
                   value: progress.toDouble(),
@@ -700,12 +771,13 @@ class _HomePageState extends State<HomePage> {
                   divisions: 20,
                   onChanged: (v) => modalSet(() => progress = v.round()),
                 ),
+                const SizedBox(height: 14),
                 FilledButton(
                   onPressed: () async {
                     await _repo!.update(
                       id: id,
                       title: title.text,
-                      category: category.text.trim(),
+                      category: selectedCategory,
                       note: note.text,
                       progress: progress,
                     );
@@ -715,13 +787,21 @@ class _HomePageState extends State<HomePage> {
                   },
                   child: const Text('حفظ التعديلات'),
                 ),
+                const SizedBox(height: 12),
                 TextButton.icon(
-                  onPressed: () => Navigator.pop(context, true),
+                  onPressed: () async {
+                    if (await _confirmDelete() && context.mounted) {
+                      Navigator.pop(context, true);
+                    }
+                  },
                   icon: const Icon(
                     Icons.delete_outline,
                     color: BougaColors.danger,
                   ),
-                  label: const Text('حذف الرابط'),
+                  label: const Text(
+                    'حذف الرابط',
+                    style: TextStyle(color: BougaColors.danger),
+                  ),
                 ),
               ],
             ),
@@ -729,12 +809,9 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
     );
-    if (remove == true) {
-      await _repo!.delete(id);
-    }
+    if (remove == true) await _repo!.delete(id);
     await _refresh();
     title.dispose();
-    category.dispose();
     note.dispose();
   }
 
@@ -748,6 +825,7 @@ class _HomePageState extends State<HomePage> {
           add: () => _add(group: group),
           details: _details,
           open: _openContent,
+          delete: _deleteLink,
         ),
       ),
     );
@@ -767,6 +845,15 @@ class _HomePageState extends State<HomePage> {
             style: TextStyle(color: BougaColors.muted),
           ),
           const SizedBox(height: 20),
+          OutlinedButton.icon(
+            key: _tourNewGroup,
+            onPressed: _newGroup,
+            icon: const Icon(Icons.add),
+            label: const Padding(
+              padding: EdgeInsets.all(17),
+              child: Text('مجموعة جديدة', style: TextStyle(fontSize: 17)),
+            ),
+          ),
           if (_categories.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 24),
@@ -837,15 +924,6 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           ),
-          OutlinedButton.icon(
-            key: _tourNewGroup,
-            onPressed: _newGroup,
-            icon: const Icon(Icons.add),
-            label: const Padding(
-              padding: EdgeInsets.all(17),
-              child: Text('مجموعة جديدة', style: TextStyle(fontSize: 17)),
-            ),
-          ),
         ],
       );
 
@@ -882,6 +960,7 @@ class _HomePageState extends State<HomePage> {
         item: item,
         onOpen: () => _openContent(item),
         onEdit: () => _details(item),
+        onDelete: () => _deleteLink(item),
       );
 
   @override
@@ -1227,12 +1306,14 @@ class _GroupLinksPage extends StatefulWidget {
     required this.add,
     required this.details,
     required this.open,
+    required this.delete,
   });
   final String group;
   final Future<List<Map<String, Object?>>> Function(bool) load;
   final Future<void> Function() add;
   final Future<void> Function(Map<String, Object?>) details;
   final Future<void> Function(Map<String, Object?>) open;
+  final Future<void> Function(Map<String, Object?>) delete;
   @override
   State<_GroupLinksPage> createState() => _GroupLinksPageState();
 }
@@ -1344,6 +1425,10 @@ class _GroupLinksPageState extends State<_GroupLinksPage> {
                         },
                         onEdit: () async {
                           await widget.details(item);
+                          await _refresh();
+                        },
+                        onDelete: () async {
+                          await widget.delete(item);
                           await _refresh();
                         },
                       ),
