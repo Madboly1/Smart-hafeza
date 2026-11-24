@@ -168,7 +168,7 @@ class SavedLinkCard extends StatelessWidget {
                               size: 19,
                               color: BougaColors.danger,
                             ),
-                            const SizedBox(width: 10),
+                            SizedBox(width: 10),
                             Text(
                               'حذف',
                               style: TextStyle(color: BougaColors.danger),

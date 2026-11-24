@@ -603,8 +603,8 @@ class _HomePageState extends State<HomePage> {
           added == 0
               ? const SnackBar(
                   backgroundColor: BougaColors.danger,
-                  duration: const Duration(seconds: 5),
-                  content: const Row(
+                  duration: Duration(seconds: 5),
+                  content: Row(
                     children: [
                       Icon(Icons.warning_amber_rounded, color: Colors.white),
                       SizedBox(width: 10),
