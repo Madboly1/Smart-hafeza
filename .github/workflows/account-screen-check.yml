@@ -299,7 +299,7 @@ jobs:
             : > /tmp/tap.txt
             tap_text "$1"
             read X Y < /tmp/tap.txt || true
-            if [ -n "\${X:-}" ]; then adb shell input tap $X $Y; unset X Y; return 0; fi
+            if [ -n "${X:-}" ]; then adb shell input tap $X $Y; unset X Y; return 0; fi
             unset X Y; return 1
           }
           shot() { adb exec-out screencap -p > "shots/$1.png"; }
