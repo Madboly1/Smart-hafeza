@@ -187,6 +187,91 @@ jobs:
           adb exec-out screencap -p > shots/00_share_receive.png
           adb shell input keyevent 4
           sleep 2
+      - name: Exercise link and group UX screens
+        run: |
+          mkdir -p shots
+          tap_text() {
+            adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+            adb pull /sdcard/ui.xml ui.xml >/dev/null 2>&1
+            python3 - "$1" <<'PY' > /tmp/tap.txt
+          import re, sys
+          target = sys.argv[1]
+          xml = open('ui.xml', encoding='utf-8').read()
+          for m in re.finditer(r'<node\b[^>]*>', xml):
+              tag = m.group(0)
+              tm = re.search(r'text="([^"]*)"', tag)
+              dm = re.search(r'content-desc="([^"]*)"', tag)
+              bm = re.search(r'bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', tag)
+              if not bm:
+                  continue
+              val = (tm.group(1) if tm else '') + ' ' + (dm.group(1) if dm else '')
+              if target in val:
+                  print((int(bm.group(1)) + int(bm.group(3))) // 2, (int(bm.group(2)) + int(bm.group(4))) // 2)
+                  break
+          PY
+          }
+          try_tap() {
+            : > /tmp/tap.txt
+            tap_text "$1"
+            read X Y < /tmp/tap.txt || true
+            if [ -n "${X:-}" ]; then adb shell input tap $X $Y; unset X Y; return 0; fi
+            unset X Y; return 1
+          }
+          shot() { adb exec-out screencap -p > "shots/$1.png"; }
+          adb shell pm clear com.hafeza.bouga
+          adb shell monkey -p com.hafeza.bouga -c android.intent.category.LAUNCHER 1
+          sleep 15
+          for i in 1 2 3; do try_tap "تخطّي الجولة" || true; sleep 2; done
+          adb shell am start -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT 'https://example.com/bouga-ci-one' -n com.hafeza.bouga/.MainActivity
+          sleep 6
+          shot 10_add_dialog
+          try_tap "المجموعة (اختياري)" || true
+          sleep 2
+          shot 11_group_dropdown
+          adb shell input keyevent 4
+          sleep 1
+          try_tap "حفظ" || true
+          sleep 3
+          shot 12_after_save
+          adb shell am start -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT 'https://example.com/bouga-ci-one' -n com.hafeza.bouga/.MainActivity
+          sleep 6
+          try_tap "حفظ" || true
+          sleep 1
+          shot 13_duplicate_warning
+          sleep 6
+          try_tap "المزيد" || true
+          sleep 2
+          shot 14_card_menu
+          try_tap "حذف" || true
+          sleep 2
+          shot 15_delete_confirm
+          try_tap "إلغاء" || true
+          sleep 2
+          try_tap "المزيد" || true
+          sleep 2
+          try_tap "تعديل" || true
+          sleep 3
+          shot 16_edit_sheet
+          adb shell input keyevent 4
+          sleep 2
+          try_tap "المجموعات" || true
+          sleep 3
+          shot 17_groups_page_top
+          try_tap "مجموعة جديدة" || true
+          sleep 2
+          try_tap "اسم المجموعة" || true
+          sleep 1
+          adb shell input text A1
+          try_tap "إنشاء" || true
+          sleep 3
+          try_tap "مجموعة جديدة" || true
+          sleep 2
+          try_tap "اسم المجموعة" || true
+          sleep 1
+          adb shell input text B2
+          try_tap "إنشاء" || true
+          sleep 3
+          shot 18_groups_newest_first
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
