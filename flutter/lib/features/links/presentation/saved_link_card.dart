@@ -159,7 +159,7 @@ class SavedLinkCard extends StatelessWidget {
                           ],
                         ),
                       ),
-                      PopupMenuItem(
+                      const PopupMenuItem(
                         value: 'delete',
                         child: Row(
                           children: [

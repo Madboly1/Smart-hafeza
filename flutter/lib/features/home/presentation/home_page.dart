@@ -601,7 +601,7 @@ class _HomePageState extends State<HomePage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           added == 0
-              ? SnackBar(
+              ? const SnackBar(
                   backgroundColor: BougaColors.danger,
                   duration: const Duration(seconds: 5),
                   content: const Row(
