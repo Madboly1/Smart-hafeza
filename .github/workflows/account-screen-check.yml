@@ -272,6 +272,93 @@ jobs:
           try_tap "إنشاء" || true
           sleep 3
           shot 18_groups_newest_first
+      - name: Exercise many groups, picker scroll, edit delete, banner duration
+        run: |
+          mkdir -p shots
+          tap_text() {
+            adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+            adb pull /sdcard/ui.xml ui.xml >/dev/null 2>&1
+            python3 - "$1" <<'PY' > /tmp/tap.txt
+          import re, sys
+          target = sys.argv[1]
+          xml = open('ui.xml', encoding='utf-8').read()
+          for m in re.finditer(r'<node\b[^>]*>', xml):
+              tag = m.group(0)
+              tm = re.search(r'text="([^"]*)"', tag)
+              dm = re.search(r'content-desc="([^"]*)"', tag)
+              bm = re.search(r'bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', tag)
+              if not bm:
+                  continue
+              val = (tm.group(1) if tm else '') + ' ' + (dm.group(1) if dm else '')
+              if target in val:
+                  print((int(bm.group(1)) + int(bm.group(3))) // 2, (int(bm.group(2)) + int(bm.group(4))) // 2)
+                  break
+          PY
+          }
+          try_tap() {
+            : > /tmp/tap.txt
+            tap_text "$1"
+            read X Y < /tmp/tap.txt || true
+            if [ -n "\${X:-}" ]; then adb shell input tap $X $Y; unset X Y; return 0; fi
+            unset X Y; return 1
+          }
+          shot() { adb exec-out screencap -p > "shots/$1.png"; }
+          adb shell pm clear com.hafeza.bouga
+          adb shell monkey -p com.hafeza.bouga -c android.intent.category.LAUNCHER 1
+          sleep 15
+          for i in 1 2 3; do try_tap "تخطّي الجولة" || true; sleep 2; done
+          try_tap "المجموعات" || true
+          sleep 3
+          for n in 01 02 03 04 05 06 07 08 09 10 11 12; do
+            try_tap "مجموعة جديدة" || true
+            sleep 2
+            try_tap "اسم المجموعة" || true
+            sleep 1
+            adb shell input text G$n
+            try_tap "إنشاء" || true
+            sleep 2
+          done
+          shot 20_twelve_groups
+          try_tap "الرئيسية" || true
+          sleep 2
+          adb shell am start -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT 'https://example.com/bouga-ci-two' -n com.hafeza.bouga/.MainActivity
+          sleep 6
+          try_tap "المجموعة (اختياري)" || true
+          sleep 2
+          shot 21_add_picker_open_top
+          adb shell input swipe 360 1300 360 950 300
+          sleep 1
+          shot 22_add_picker_scrolled
+          adb shell input keyevent 4
+          sleep 1
+          try_tap "حفظ" || true
+          sleep 3
+          adb shell am start -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT 'https://example.com/bouga-ci-two' -n com.hafeza.bouga/.MainActivity
+          sleep 6
+          try_tap "حفظ" || true
+          sleep 1
+          shot 23_duplicate_at_1s
+          sleep 5
+          shot 24_duplicate_at_6s
+          sleep 2
+          try_tap "المزيد" || true
+          sleep 2
+          try_tap "تعديل" || true
+          sleep 3
+          try_tap "المجموعة (اختياري)" || true
+          sleep 2
+          shot 25_edit_picker_open
+          adb shell input swipe 360 1300 360 950 300
+          sleep 1
+          shot 26_edit_picker_scrolled
+          adb shell input keyevent 4
+          sleep 1
+          try_tap "حذف الرابط" || true
+          sleep 2
+          shot 27_delete_confirm_from_edit
+          try_tap "إلغاء" || true
+          sleep 2
+          shot 28_after_cancel_still_there
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
