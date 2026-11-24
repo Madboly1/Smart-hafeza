@@ -398,3 +398,4 @@ jobs:
           name: bouga-signed-trial-no-ota
           path: flutter/build/app/outputs/flutter-apk/app-*-release.apk
           if-no-files-found: error
+# test build of 45f8b5a fixes
