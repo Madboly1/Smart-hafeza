@@ -356,6 +356,102 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _groupActions(String group) async {
+    final action = await showModalBottomSheet<String>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+              ListTile(
+                  leading: const Icon(Icons.edit_outlined),
+                  title: const Text('إعادة تسمية'),
+                  onTap: () => Navigator.pop(sheetContext, 'rename')),
+              ListTile(
+                  leading: const Icon(Icons.delete_outline,
+                      color: BougaColors.danger),
+                  title: const Text('حذف المجموعة',
+                      style: TextStyle(color: BougaColors.danger)),
+                  onTap: () => Navigator.pop(sheetContext, 'delete')),
+            ])));
+    if (!mounted || action == null) return;
+    if (action == 'rename') {
+      await _renameGroup(group);
+    } else if (action == 'delete') {
+      await _deleteGroup(group);
+    }
+  }
+
+  Future<void> _renameGroup(String group) async {
+    final name = TextEditingController(text: group);
+    final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+              title: const Text('إعادة تسمية المجموعة'),
+              content: TextField(
+                  controller: name,
+                  maxLength: 60,
+                  autofocus: true,
+                  decoration: const InputDecoration(labelText: 'اسم المجموعة')),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(dialogContext, false),
+                    child: const Text('إلغاء')),
+                FilledButton(
+                    onPressed: () {
+                      if (name.text.trim().isNotEmpty) {
+                        Navigator.pop(dialogContext, true);
+                      }
+                    },
+                    child: const Text('حفظ'))
+              ],
+            ));
+    if (confirmed == true) {
+      final target = name.text.trim();
+      name.dispose();
+      if (target == group) return;
+      try {
+        await _db!.renameCategory(group, target);
+        if (_category == group) _category = target;
+        await _refresh();
+      } on FormatException catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(error.message)));
+        }
+      }
+      return;
+    }
+    name.dispose();
+  }
+
+  Future<void> _deleteGroup(String group) async {
+    final count = _groupCounts[group] ?? 0;
+    final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+              title: const Text('حذف المجموعة'),
+              content: Text(
+                  'هتحذف مجموعة "$group". الروابط اللي فيها ($count) مش هتتمسح، هتنتقل لمجموعة أخرى.'),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(dialogContext, false),
+                    child: const Text('إلغاء')),
+                FilledButton(
+                    onPressed: () => Navigator.pop(dialogContext, true),
+                    child: const Text('حذف'))
+              ],
+            ));
+    if (confirmed == true) {
+      await _db!.deleteCategory(group);
+      if (_category == group) _category = 'الكل';
+      await _refresh();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('اتحذفت المجموعة وروابطها في أخرى')));
+      }
+    }
+  }
+
   Future<void> _showPendingShares() async {
     if (_tourRunning || _shareDialogOpen || !mounted || _repo == null) return;
     _shareDialogOpen = true;
@@ -629,6 +725,11 @@ class _HomePageState extends State<HomePage> {
                                             color: BougaColors.muted,
                                             fontSize: 13))
                                   ])),
+                              IconButton(
+                                  icon: const Icon(Icons.more_vert,
+                                      color: BougaColors.muted),
+                                  tooltip: 'خيارات المجموعة',
+                                  onPressed: () => _groupActions(c)),
                               const Icon(Icons.chevron_left,
                                   textDirection: TextDirection.ltr),
                             ]))))))),

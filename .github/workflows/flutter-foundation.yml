@@ -86,6 +86,11 @@ jobs:
             echo "Generated AndroidManifest.xml not found" >&2
             exit 1
           fi
+      - name: Configure Android incoming share and reminders
+        run: |
+          python3 tool/test_reminders.py
+          python3 tool/configure_incoming_share.py
+          python3 tool/configure_reminders.py
       - run: flutter pub get
       - run: dart format lib test
       - run: flutter analyze

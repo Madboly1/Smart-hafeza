@@ -213,6 +213,100 @@ void main() {
     expect(rows.single['title'], 'new');
   });
 
+  test('duplicate check catches the same page in different URL shapes',
+      () async {
+    expect(
+        await database.addLink(
+            url: 'https://youtu.be/dQw4w9WgXcQ',
+            title: '',
+            category: '',
+            kind: 'رابط'),
+        1);
+    expect(
+        await database.addLink(
+            url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+            title: '',
+            category: '',
+            kind: 'رابط'),
+        0);
+    expect(
+        await database.addLink(
+            url: 'https://m.youtube.com/watch?v=dQw4w9WgXcQ',
+            title: '',
+            category: '',
+            kind: 'رابط'),
+        0);
+    expect(
+        await database.addLink(
+            url: 'https://youtube.com/watch?v=dQw4w9WgXcQ#t=10',
+            title: '',
+            category: '',
+            kind: 'رابط'),
+        0);
+    expect(await database.countLinks(), 1);
+    final stored = (await database.getLinks()).single['url'];
+    expect(stored, 'https://youtube.com/watch?v=dQw4w9WgXcQ');
+
+    expect(
+        await database.addLink(
+            url: 'https://WWW.Example.com/Path/',
+            title: '',
+            category: '',
+            kind: 'رابط'),
+        1);
+    expect(
+        await database.addLink(
+            url: 'https://example.com/Path',
+            title: '',
+            category: '',
+            kind: 'رابط'),
+        0);
+    // A different page on the same host is not a duplicate.
+    expect(
+        await database.addLink(
+            url: 'https://example.com/other',
+            title: '',
+            category: '',
+            kind: 'رابط'),
+        1);
+  });
+
+  test('legacy rows saved in another URL shape still block duplicates',
+      () async {
+    await database.importLegacyJson(jsonEncode({
+      'links': [
+        {'id': 'legacy', 'url': 'https://youtu.be/abc123xyz89', 'seen': 5}
+      ]
+    }));
+    expect(
+        await database.addLink(
+            url: 'https://youtube.com/watch?v=abc123xyz89',
+            title: '',
+            category: '',
+            kind: 'رابط'),
+        0);
+    expect(await database.countLinks(), 1);
+  });
+
+  test('rename and delete group move links without losing them', () async {
+    await database.addLink(
+        url: 'https://a.example', title: '', category: 'قديمة', kind: 'رابط');
+    await database.addLink(
+        url: 'https://b.example', title: '', category: 'قديمة', kind: 'رابط');
+    expect(await database.getCategories(), ['قديمة']);
+
+    final moved = await database.renameCategory('قديمة', 'جديدة');
+    expect(moved, 2);
+    expect(await database.getCategories(), ['جديدة']);
+    expect((await database.getLinks(category: 'جديدة')).length, 2);
+    expect(database.renameCategory('جديدة', ''), throwsFormatException);
+
+    final reassigned = await database.deleteCategory('جديدة');
+    expect(reassigned, 2);
+    expect(await database.getCategories(), ['أخرى']);
+    expect((await database.getLinks(category: 'أخرى')).length, 2);
+  });
+
   test('malformed JSON fails before touching existing database content',
       () async {
     await database.importLegacyJson(

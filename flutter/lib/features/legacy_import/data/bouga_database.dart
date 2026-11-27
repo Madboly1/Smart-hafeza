@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../../links/data/link_url.dart';
 import '../domain/legacy_snapshot.dart';
 import 'legacy_import_contract.dart';
 
@@ -265,9 +266,11 @@ class BougaDatabase {
       required String title,
       required String category,
       required String kind}) async {
-    final normalized = url.trim();
+    final normalized = normalizeLinkUrl(url);
+    final keys = linkUrlKeys(url);
+    final placeholders = List.filled(keys.length, '?').join(',');
     final existing = await _database.query('links',
-        where: 'url = ?', whereArgs: [normalized], limit: 1);
+        where: 'url IN ($placeholders)', whereArgs: keys, limit: 1);
     if (existing.isNotEmpty) {
       return 0;
     }
@@ -322,6 +325,43 @@ class BougaDatabase {
     }
     await _database.insert('categories', {'name': value, 'sort_order': 999},
         conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
+  /// Renames a group and moves its links. Returns the moved link count.
+  Future<int> renameCategory(String from, String to) async {
+    final source = from.trim();
+    final target = to.trim();
+    if (target.isEmpty || target.length > 60) {
+      throw const FormatException('اسم المجموعة من 1 إلى 60 حرف.');
+    }
+    if (source == target) return 0;
+    return _database.transaction((txn) async {
+      final rows = await txn.query('categories',
+          where: 'name = ?', whereArgs: [source], limit: 1);
+      final sortOrder =
+          rows.isEmpty ? 999 : (rows.first['sort_order'] as int? ?? 999);
+      final moved = await txn.update('links', {'category': target},
+          where: 'category = ?', whereArgs: [source]);
+      await txn.delete('categories', where: 'name = ?', whereArgs: [source]);
+      await txn.insert('categories', {'name': target, 'sort_order': sortOrder},
+          conflictAlgorithm: ConflictAlgorithm.ignore);
+      return moved;
+    });
+  }
+
+  /// Deletes a group; its links move to [fallback]. Returns the moved count.
+  Future<int> deleteCategory(String name, {String fallback = 'أخرى'}) async {
+    final source = name.trim();
+    return _database.transaction((txn) async {
+      final moved = await txn.update('links', {'category': fallback},
+          where: 'category = ?', whereArgs: [source]);
+      await txn.delete('categories', where: 'name = ?', whereArgs: [source]);
+      if (fallback.isNotEmpty) {
+        await txn.insert('categories', {'name': fallback, 'sort_order': 999},
+            conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+      return moved;
+    });
   }
 
   Future<void> markOpened(String id) async {
